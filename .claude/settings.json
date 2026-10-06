@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(~/.qiskit)",
+      "Read(~/.qiskit/**)",
+      "Edit(~/.qiskit/**)",
+      "Read(**/qiskit-ibm.json)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(*.env)",
+      "Bash(*.qiskit*)",
+      "Bash(*qiskit-ibm.json*)",
+      "Bash(*QiskitRuntimeService*)",
+      "Bash(*pipeline.tasks collect-quantum*)",
+      "Bash(*pipeline.tasks refresh*)",
+      "Bash(*pipeline/tasks.py collect-quantum*)",
+      "Bash(*pipeline/tasks.py refresh*)",
+      "Bash(git push *)",
+      "Bash(git -C * push*)",
+      "Bash(git -c * push*)"
+    ]
+  }
+}

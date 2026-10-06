@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+# Binary data and fonts: no diffs, no line-ending conversion
+*.npz binary
+*.npy binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.png binary
+*.jpg binary
+
+# Generated single-file build: treat as generated in diffs
+demo/index.html linguist-generated=true -diff

@@ -1,0 +1,51 @@
+# Local-only data and experiments
+data/scratch/*
+!data/scratch/.gitkeep
+/scratch/
+
+# Secrets and environment files (never commit)
+.env
+.env.*
+*.env
+.qiskit/
+qiskit-ibm.json
+
+# Python virtualenvs
+.venv/
+venv/
+env/
+qrng-env/
+
+# Python caches and build output
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# Node / UI
+node_modules/
+ui/dist/
+ui/.vite/
+*.tsbuildinfo
+npm-debug.log*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Icon?
+
+# Editors
+.idea/
+*.swp
+
+# Claude Code per-user settings (project settings.json IS committed)
+.claude/settings.local.json
