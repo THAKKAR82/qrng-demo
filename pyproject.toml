@@ -47,6 +47,8 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "PTH", "RUF"]
 python_version = "3.11"
 strict = true
 files = ["pipeline", "tests"]
+# nbformat ships no type hints; allow calling it from typed code.
+untyped_calls_exclude = ["nbformat"]
 
 [[tool.mypy.overrides]]
 module = [

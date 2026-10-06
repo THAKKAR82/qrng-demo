@@ -7,11 +7,13 @@ from pipeline.attacker import (
     MT_STATE_WORDS,
     BiasAttacker,
     MersenneTwisterAttacker,
+    PreviousShotAttacker,
     cross_checks,
     running_accuracy,
+    stream_as_shots,
     untemper,
 )
-from pipeline.classical import generate_words
+from pipeline.classical import generate_words, urandom_words, words_to_bits
 
 
 def _temper(y: int) -> int:
@@ -174,3 +176,51 @@ def test_cross_checks_score_about_half() -> None:
 def test_bias_attacker_needs_two_shots() -> None:
     with pytest.raises(ValueError):
         BiasAttacker().attack(np.zeros((1, 5), dtype=np.uint8))
+
+
+# --- Previous-shot attacker ------------------------------------------------------------------
+
+
+def test_previous_shot_attacker_predicts_alternating_bits() -> None:
+    column = np.arange(100) % 2
+    bits = np.stack([column, 1 - column, np.ones(100, dtype=np.int64)], axis=1).astype(np.uint8)
+    result = PreviousShotAttacker().attack(bits)
+    assert result.accuracy == 1.0
+    assert result.n_predicted == 50 * 3
+    assert result.n_training_bits == 50 * 3
+    assert result.per_qubit_accuracy is not None
+    assert result.per_qubit_accuracy.tolist() == [1.0, 1.0, 1.0]
+
+
+def test_previous_shot_attacker_uses_last_training_shot_for_first_prediction() -> None:
+    # Training shots repeat, so the attacker predicts "same as before". The first held-out
+    # prediction must therefore equal the last training shot.
+    bits = np.array([[0], [0], [1], [1]], dtype=np.uint8)
+    result = PreviousShotAttacker().attack(bits)
+    assert result.predictions.tolist() == [0, 1]
+
+
+def test_previous_shot_attacker_scores_about_half_on_independent_biased_bits() -> None:
+    bits = (np.random.default_rng(4).random((2000, 100)) < 0.45).astype(np.uint8)
+    result = PreviousShotAttacker().attack(bits)
+    assert abs(result.accuracy - 0.5) < 0.01
+
+
+def test_previous_shot_attacker_needs_two_training_shots() -> None:
+    with pytest.raises(ValueError):
+        PreviousShotAttacker().attack(np.zeros((3, 2), dtype=np.uint8))
+
+
+def test_stream_as_shots_takes_the_prefix_in_order() -> None:
+    assert stream_as_shots([1, 0, 1, 1, 0, 0, 1], (2, 3)).tolist() == [[1, 0, 1], [1, 0, 0]]
+    with pytest.raises(ValueError):
+        stream_as_shots([1, 0], (2, 3))
+
+
+def test_consistent_with_chance() -> None:
+    perfect = BiasAttacker().attack(np.ones((100, 4), dtype=np.uint8))
+    assert not perfect.consistent_with_chance
+    words = urandom_words(4000)
+    fair = BiasAttacker().attack(stream_as_shots(words_to_bits(words), (1280, 100)))
+    assert fair.ci_low < fair.ci_high
+    assert fair.consistent_with_chance is (fair.ci_low <= 0.5 <= fair.ci_high)

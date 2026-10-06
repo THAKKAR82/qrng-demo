@@ -5,9 +5,13 @@ import pytest
 
 from pipeline.analysis import (
     analyze_bias,
+    bias_direction,
     bias_per_qubit,
     bitmap,
+    entropy_estimator_bias,
+    entropy_shortfall,
     min_entropy_from_accuracy,
+    per_qubit_shannon_entropy,
     shannon_entropy_per_bit,
     wilson_interval,
 )
@@ -182,3 +186,57 @@ def test_bitmap_flattens_2d_input_shot_major() -> None:
 def test_bitmap_needs_enough_bits() -> None:
     with pytest.raises(ValueError):
         bitmap(np.zeros(8, dtype=np.uint8), 3)
+
+
+# --- Per-qubit entropy and estimator bias ----------------------------------------------------
+
+
+def test_per_qubit_shannon_entropy_is_h_of_each_column() -> None:
+    bits = np.array([[1, 0, 1], [0, 0, 1], [1, 0, 1], [0, 0, 0]], dtype=np.uint8)
+    # Columns have P(1) = 0.5, 0.0 and 0.75.
+    assert per_qubit_shannon_entropy(bits) == pytest.approx([1.0, 0.0, 0.8112781244591328])
+
+
+def test_entropy_estimator_bias_formula() -> None:
+    assert entropy_estimator_bias(2000) == pytest.approx(1 / (4000 * math.log(2)))
+    with pytest.raises(ValueError):
+        entropy_estimator_bias(0)
+
+
+def test_entropy_estimator_bias_matches_simulated_fair_coins() -> None:
+    n = 500
+    bits = (np.random.default_rng(1).random((n, 4000)) < 0.5).astype(np.uint8)
+    observed = 1.0 - per_qubit_shannon_entropy(bits).mean()
+    assert observed == pytest.approx(entropy_estimator_bias(n), rel=0.1)
+
+
+def test_entropy_shortfall_fair_coins_are_not_noticeable() -> None:
+    bits = (np.random.default_rng(2).random((2000, 100)) < 0.5).astype(np.uint8)
+    result = entropy_shortfall(bits)
+    assert result.fair_chi_square_dof == 100
+    assert result.shortfall == pytest.approx(1.0 - result.mean_entropy)
+    assert result.estimator_bias == pytest.approx(entropy_estimator_bias(2000))
+    assert not result.noticeable
+
+
+def test_entropy_shortfall_biased_coins_are_noticeable() -> None:
+    bits = (np.random.default_rng(3).random((2000, 100)) < 0.45).astype(np.uint8)
+    result = entropy_shortfall(bits)
+    assert result.noticeable
+    assert result.shortfall > 5 * result.estimator_bias
+
+
+@pytest.mark.parametrize(
+    ("p_one", "direction"),
+    [
+        ([0.45] * 30, "toward_0"),
+        ([0.55] * 30, "toward_1"),
+        ([0.45, 0.55] * 15, "mixed"),
+        ([0.5] * 4, "mixed"),
+    ],
+)
+def test_bias_direction(p_one: list[float], direction: str) -> None:
+    result = bias_direction(p_one)
+    assert result.direction == direction
+    assert result.n_below_half == sum(p < 0.5 for p in p_one)
+    assert result.n_above_half == sum(p > 0.5 for p in p_one)

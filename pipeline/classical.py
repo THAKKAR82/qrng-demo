@@ -40,6 +40,11 @@ def generate_words(n_words: int) -> npt.NDArray[np.uint32]:
     )
 
 
+def urandom_words(n_words: int) -> npt.NDArray[np.uint32]:
+    """``n_words`` 32-bit words straight from ``os.urandom`` (the OS's secure generator)."""
+    return np.frombuffer(os.urandom(4 * n_words), dtype=">u4").astype(np.uint32)
+
+
 def words_to_bits(words: npt.ArrayLike) -> npt.NDArray[np.uint8]:
     """Unpack words most significant bit first: ``w`` gives ``(w >> 31) & 1, ..., w & 1``."""
     big_endian = np.asarray(words, dtype=np.uint32).astype(">u4")

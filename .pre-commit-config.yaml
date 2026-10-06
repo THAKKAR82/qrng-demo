@@ -38,3 +38,10 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+  # Notebooks are committed with outputs cleared (SPEC.md, Section 8).
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.9.1
+    hooks:
+      - id: nbstripout
+        args: ["--extra-keys", "metadata.language_info.version cell.metadata.execution"]

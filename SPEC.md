@@ -196,16 +196,17 @@ The schema is `ui/src/data/demo.schema.json`, documented in `ui/src/data/SCHEMA.
 
 ## 8. Notebook
 
-There is one notebook, `notebooks/qrng_analysis.ipynb`. It runs the analysis end to end by calling `pipeline` functions:
+There is one notebook, `notebooks/qrng_demo.ipynb`. It runs the analysis end to end by calling `pipeline` functions, and contains no analysis logic of its own:
 
-1. Load a run (the latest committed real run by default; otherwise the synthetic sample, with a visible "SYNTHETIC DATA" banner in its output).
-2. Show bit ordering and flattening on a small example.
-3. Show that both streams look random by ordinary statistics: fraction of ones and Shannon entropy.
-4. Run both attackers and the cross-checks, and report P_guess, its confidence interval, and H∞.
-5. Plot per-qubit bias, with an explanation of readout bias.
-6. **Appendix:** secure classical generators (`os.urandom`), the computational-hardness vs. physics distinction, and the limits from Section 3.2.
+1. Load a run, choosing the folder exactly as `export` does (the latest committed real run by default; otherwise the synthetic sample, with a prominent "SYNTHETIC DATA" banner in its output). The environment variables `QRNG_NOTEBOOK_RUN` and `QRNG_NOTEBOOK_SAMPLE` override the choice, like `export --run` and `--sample`.
+2. **Proof of hardware:** backend, job ID, timestamps, qubit selection method and candidate count, a small bit-ordering and flattening example, per-qubit P(1) alongside readout error, and the bias tests from Section 7.1 (flagged qubits are named and kept), with an explanation of readout bias.
+3. **Do they look random?** Bitmaps and Shannon entropy for both streams (pooled, and per-qubit mean for quantum), with the finite-sample estimator bias of about 1/(2N ln 2) explained.
+4. **The attacker:** running accuracy for both attackers, P_guess with its 95% interval, H∞ at the point estimate and the conservative bound, the previous-shot attacker (Section 3.2), and the cross-checks.
+5. **Appendix:** the bias attacker on `os.urandom` bits, the computational-hardness vs. physics distinction, and the limits from Section 3.2.
 
-The notebook is committed with outputs cleared. Tests execute it against the synthetic sample (with `nbmake`) so it can't silently break.
+Charts use one shared matplotlib style, `pipeline/plotstyle.py`: classical is always the same warm colour and quantum always the same cool colour, and every chart title says "SYNTHETIC" when the data is.
+
+The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook enforces this). Tests execute it against the synthetic sample (with `nbclient`, through the `notebook` task) so it can't silently break.
 
 ## 9. Presentation UI
 
@@ -235,13 +236,13 @@ Everything runs through `python -m pipeline.tasks <task>`.
 | `collect-quantum --dry-run` | Runs the real Sampler locally on Aer with a fake backend; writes nothing to `data/runs/`. | Anyone |
 | `analyze --run <id>` / `--sample <name>` | Writes `results.json`. | Anyone |
 | `export [--run <id> \| --sample <name>]` | Writes `ui/src/data/demo.json` (Section 7.1). | Anyone |
-| `notebook` | Executes the notebook into `data/scratch/`. | Anyone |
+| `notebook [--run <id> \| --sample <name>]` | Executes the notebook into `data/scratch/`. | Anyone |
 | `ui-dev` | Starts the Vite dev server. | Anyone |
 | `build-demo --run <id>` | Builds the UI from one run and copies it to `demo/index.html`. | Anyone |
 | `check` | Runs ruff, mypy, pytest, and the UI lint and type check. | Anyone |
 | `refresh` | Runs `collect-quantum`, `analyze`, and `build-demo` in one go. | **Human only** |
 
-`setup-check`, `make-sample`, `collect-classical`, `collect-quantum`, and `export` exist so far. The others are added in later tasks.
+`setup-check`, `make-sample`, `collect-classical`, `collect-quantum`, `export`, and `notebook` exist so far. The others are added in later tasks.
 
 ## 11. Engineering conventions
 

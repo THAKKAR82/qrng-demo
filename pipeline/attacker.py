@@ -5,6 +5,8 @@
   later output.
 - ``BiasAttacker`` sees the first half of the quantum shots, learns each qubit's more
   common value, and guesses that value for the same qubit on every held-out shot.
+- ``PreviousShotAttacker`` (SPEC.md, Section 3.2) learns whether each qubit tends to repeat
+  or flip its previous shot, and predicts each held-out bit from the shot before it.
 
 Neither attacker ever sees the classical seed; it only sees outputs.
 """
@@ -43,6 +45,11 @@ class AttackResult:
     # The attacker's guess for each held-out bit, in stream order.
     predictions: npt.NDArray[np.uint8]
     per_qubit_accuracy: npt.NDArray[np.float64] | None = None
+
+    @property
+    def consistent_with_chance(self) -> bool:
+        """True if the 95% interval contains 0.5 (a coin flip)."""
+        return self.ci_low <= 0.5 <= self.ci_high
 
 
 def running_accuracy(
@@ -180,6 +187,23 @@ class MersenneTwisterAttacker:
         )
 
 
+def _as_shots(bits_2d: npt.ArrayLike) -> npt.NDArray[np.uint8]:
+    bits = np.asarray(bits_2d, dtype=np.uint8)
+    if bits.ndim != 2:
+        raise ValueError(f"expected a (shots, qubits) array, got shape {bits.shape}")
+    return bits
+
+
+def stream_as_shots(stream: npt.ArrayLike, shape: tuple[int, int]) -> npt.NDArray[np.uint8]:
+    """The first ``shots * qubits`` bits of a flat stream as a ``(shots, qubits)`` array, so
+    an attacker built for the quantum layout can run on any other stream."""
+    flat = np.asarray(stream, dtype=np.uint8).reshape(-1)
+    needed = shape[0] * shape[1]
+    if flat.size < needed:
+        raise ValueError(f"stream has {flat.size} bits, need {needed}")
+    return flat[:needed].reshape(shape)
+
+
 class BiasAttacker:
     """Learns each qubit's majority value on the training shots and always guesses it."""
 
@@ -195,9 +219,7 @@ class BiasAttacker:
         return int(n_shots * self.train_fraction)
 
     def attack(self, bits_2d: npt.ArrayLike) -> AttackResult:
-        bits = np.asarray(bits_2d, dtype=np.uint8)
-        if bits.ndim != 2:
-            raise ValueError(f"expected a (shots, qubits) array, got shape {bits.shape}")
+        bits = _as_shots(bits_2d)
         n_train = self.split(bits.shape[0])
         if n_train == 0 or n_train == bits.shape[0]:
             raise ValueError("need at least one training shot and one held-out shot")
@@ -209,6 +231,43 @@ class BiasAttacker:
         return _score(
             self.name,
             # Shot-major order, matching how the stream is flattened (SPEC.md, Section 5.2).
+            predictions=predictions.reshape(-1).copy(),
+            actual=held_out.reshape(-1),
+            n_training_bits=int(train.size),
+            per_qubit_accuracy=per_qubit,
+        )
+
+
+class PreviousShotAttacker:
+    """Learns, per qubit, whether a bit tends to repeat or flip the previous shot, then
+    predicts each held-out bit from the shot just before it.
+
+    This probes drift and shot-to-shot memory that the bias attacker cannot see. On
+    independent shots it should score about 0.5, whatever the qubit's bias.
+    """
+
+    name = "Previous shot (per-qubit repeat or flip)"
+
+    def __init__(self, train_fraction: float = 0.5) -> None:
+        self._split = BiasAttacker(train_fraction)
+
+    def split(self, n_shots: int) -> int:
+        return self._split.split(n_shots)
+
+    def attack(self, bits_2d: npt.ArrayLike) -> AttackResult:
+        bits = _as_shots(bits_2d)
+        n_train = self.split(bits.shape[0])
+        if n_train < 2 or n_train == bits.shape[0]:
+            raise ValueError("need at least two training shots and one held-out shot")
+        train, held_out = bits[:n_train], bits[n_train:]
+        # Flip if the qubit changed value more often than it repeated. A tie repeats.
+        flip = ((train[1:] != train[:-1]).mean(axis=0) > 0.5).astype(np.uint8)
+        # The shot before each held-out shot; the first one is the last training shot.
+        previous = bits[n_train - 1 : -1]
+        predictions = previous ^ flip
+        per_qubit = (predictions == held_out).mean(axis=0, dtype=np.float64)
+        return _score(
+            self.name,
             predictions=predictions.reshape(-1).copy(),
             actual=held_out.reshape(-1),
             n_training_bits=int(train.size),
@@ -229,13 +288,11 @@ def cross_checks(bits_2d: npt.ArrayLike, words: npt.ArrayLike) -> CrossChecks:
     """Run the MT attacker on the quantum bits, packed into 32-bit words MSB first in
     shot-major order, and the bias attacker on the classical bits, reshaped to the quantum
     array's ``(shots, qubits)`` shape."""
-    q_bits = np.asarray(bits_2d, dtype=np.uint8)
-    if q_bits.ndim != 2:
-        raise ValueError(f"expected a (shots, qubits) array, got shape {q_bits.shape}")
+    q_bits = _as_shots(bits_2d)
     c_bits = words_to_bits(words)
     if c_bits.size < q_bits.size:
         raise ValueError("classical stream is shorter than the quantum stream")
     return CrossChecks(
         mt_on_quantum=MersenneTwisterAttacker().attack(bits_to_words(q_bits)),
-        bias_on_classical=BiasAttacker().attack(c_bits[: q_bits.size].reshape(q_bits.shape)),
+        bias_on_classical=BiasAttacker().attack(stream_as_shots(c_bits, q_bits.shape)),
     )

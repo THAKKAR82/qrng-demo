@@ -50,6 +50,7 @@ def test_registered_tasks_and_human_only() -> None:
         "setup-check",
         "make-sample",
         "collect-classical",
+        "notebook",
         "collect-quantum",
         "export",
     }

@@ -19,7 +19,12 @@ import numpy as np
 import numpy.typing as npt
 
 from pipeline import runs
-from pipeline.analysis import analyze_bias, binary_entropy, bitmap, shannon_entropy_per_bit
+from pipeline.analysis import (
+    analyze_bias,
+    bitmap,
+    per_qubit_shannon_entropy,
+    shannon_entropy_per_bit,
+)
 from pipeline.attacker import (
     AttackResult,
     BiasAttacker,
@@ -140,7 +145,7 @@ def _cross_check(result: AttackResult) -> dict[str, Any]:
         "ci_high": _num(result.ci_high),
         "n_predicted": result.n_predicted,
         "min_entropy": _num(result.min_entropy),
-        "consistent_with_half": result.ci_low <= 0.5 <= result.ci_high,
+        "consistent_with_half": result.consistent_with_chance,
     }
 
 
@@ -157,22 +162,19 @@ def _next_bits(
 
 
 def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
-    q_meta = runs.read_json(folder / runs.QUANTUM_JSON)
-    c_meta = runs.read_json(folder / runs.CLASSICAL_JSON)
-    with np.load(folder / runs.QUANTUM_NPZ) as data:
-        q_bits = np.asarray(data["bits"], dtype=np.uint8)
-    with np.load(folder / runs.CLASSICAL_NPZ) as data:
-        words = np.asarray(data["words"], dtype=np.uint32)
+    run = runs.load_run(folder)
+    q_meta, c_meta = run.quantum_meta, run.classical_meta
+    q_bits, words = run.bits, run.words
     q_stream = q_bits.reshape(-1)
     c_stream = words_to_bits(words)
     shots, n_qubits = q_bits.shape
 
-    synthetic = bool(q_meta.get("synthetic", True)) or bool(c_meta.get("synthetic", True))
+    synthetic = run.synthetic
     backend = q_meta.get("backend") or {}
     job = q_meta.get("job") or {}
     selection = q_meta.get("qubit_selection") or {}
-    qubit_meta = {int(q["column"]): q for q in q_meta.get("qubits", [])}
-    physical = [_int_or_none(qubit_meta.get(j, {}).get("physical_qubit")) for j in range(n_qubits)]
+    physical = run.physical_qubits()
+    readout_errors = run.readout_errors()
 
     bias = analyze_bias(q_bits)
     bias_attacker = BiasAttacker()
@@ -181,22 +183,22 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
     assert q_attack.per_qubit_accuracy is not None
     cross = cross_checks(q_bits, words)
 
-    per_qubit_entropy = [binary_entropy(float(p)) for p in bias.p_one]
+    per_qubit_entropy = per_qubit_shannon_entropy(q_bits)
     abs_bias = np.abs(bias.p_one - 0.5)
     worst = int(np.argmax(abs_bias))
 
     qubits = []
     for j in range(n_qubits):
-        readout = qubit_meta.get(j, {}).get("readout_error")
+        readout = readout_errors[j]
         qubits.append(
             {
                 "column": j,
                 "physical_qubit": physical[j],
-                "readout_error": _num(float(readout)) if isinstance(readout, float) else None,
+                "readout_error": None if readout is None else _num(readout),
                 "p_one": _num(float(bias.p_one[j])),
                 "z": _num(float(bias.z_scores[j])),
                 "flagged": j in bias.flagged,
-                "shannon_entropy": _num(per_qubit_entropy[j]),
+                "shannon_entropy": _num(float(per_qubit_entropy[j])),
                 "attacker_accuracy": _num(float(q_attack.per_qubit_accuracy[j])),
             }
         )

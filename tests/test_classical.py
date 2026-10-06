@@ -95,3 +95,10 @@ def test_collect_for_folder_rejects_mismatched_bits(tmp_path: Path) -> None:
     np.savez_compressed(tmp_path / runs.QUANTUM_NPZ, bits=np.zeros((2, 2), dtype=np.uint8))
     with pytest.raises(ValueError):
         classical.collect_for_folder(tmp_path, n_bits=5)
+
+
+def test_urandom_words_shape_and_variety() -> None:
+    words = classical.urandom_words(1000)
+    assert words.dtype == np.uint32
+    assert words.shape == (1000,)
+    assert len(set(words.tolist())) > 990

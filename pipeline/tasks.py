@@ -275,6 +275,27 @@ def export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _configure_notebook(parser: argparse.ArgumentParser) -> None:
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--run", help="run folder under data/runs/ (default: the latest)")
+    source.add_argument("--sample", help="folder under data/sample/ (used when no run exists)")
+
+
+def notebook(args: argparse.Namespace) -> int:
+    from nbclient.exceptions import CellExecutionError
+
+    from pipeline import notebook as runner
+
+    try:
+        target = runner.execute(run=args.run, sample=args.sample)
+    except CellExecutionError as exc:
+        print(f"The notebook failed:\n{exc}")
+        return 1
+    shown = target.relative_to(REPO_ROOT) if target.is_relative_to(REPO_ROOT) else target
+    print(f"Executed the notebook into {shown}.")
+    return 0
+
+
 TASKS: dict[str, Task] = {
     task.name: task
     for task in (
@@ -307,6 +328,12 @@ TASKS: dict[str, Task] = {
             "Write ui/src/data/demo.json from the latest run (or the sample) (offline).",
             export,
             _configure_export,
+        ),
+        Task(
+            "notebook",
+            "Execute notebooks/qrng_demo.ipynb into data/scratch/ (offline).",
+            notebook,
+            _configure_notebook,
         ),
     )
 }

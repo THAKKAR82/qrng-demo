@@ -44,6 +44,24 @@ def shannon_entropy_per_bit(bits: npt.ArrayLike) -> float:
     return binary_entropy(float(_as_bits(bits).mean()))
 
 
+def per_qubit_shannon_entropy(bits_2d: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """``h(p̂_j)`` for each column of a ``(shots, qubits)`` array."""
+    p_one = bias_per_qubit(bits_2d)
+    return np.array([binary_entropy(float(p)) for p in p_one], dtype=np.float64)
+
+
+def entropy_estimator_bias(n_samples: int) -> float:
+    """Expected downward bias of the plug-in estimate ``h(p̂)`` for a fair coin.
+
+    Expanding ``h`` around 0.5 gives ``h(p̂) ≈ 1 - 2(p̂ - 0.5)² / ln 2``. For a fair coin
+    ``E[(p̂ - 0.5)²] = 1 / (4n)``, so ``E[h(p̂)] ≈ 1 - 1 / (2n ln 2)``: even a perfect coin
+    measured ``n`` times reads low by about this much (the Miller-Madow correction).
+    """
+    if n_samples <= 0:
+        raise ValueError("n_samples must be positive")
+    return 1.0 / (2.0 * n_samples * math.log(2))
+
+
 def min_entropy_from_accuracy(p_guess: float) -> float:
     """``H∞ = -log2(max(a, 1 - a))`` in bits per bit, for binary-guess accuracy ``a``.
 
@@ -153,3 +171,69 @@ def bitmap(bits: npt.ArrayLike, size: int) -> npt.NDArray[np.uint8]:
     if size <= 0 or flat.size < needed:
         raise ValueError(f"need {needed} bits for a {size}x{size} bitmap, have {flat.size}")
     return flat[:needed].reshape(size, size)
+
+
+# A shortfall in per-qubit Shannon entropy is called "noticeable" when it is too large for
+# fair coins plus estimator bias to explain at this significance level.
+SHORTFALL_ALPHA = 0.01
+
+
+@dataclass(frozen=True)
+class EntropyShortfall:
+    """How far the per-qubit mean Shannon entropy sits below 1 bit, and whether fair coins
+    could explain it.
+
+    For a fair coin each ``z_j²`` is chi-square with 1 degree of freedom, and
+    ``1 - h(p̂_j) ≈ z_j² / (2 n ln 2)``, so the sum of ``z_j²`` over qubits is the right
+    test statistic: chi-square with (qubits) degrees of freedom when every qubit is fair.
+    """
+
+    mean_entropy: float
+    shortfall: float  # 1 - mean_entropy
+    estimator_bias: float  # expected shortfall for fair coins, 1 / (2 n ln 2)
+    fair_chi_square: float  # sum of z_j² against P(1) = 0.5
+    fair_chi_square_dof: int
+    fair_chi_square_p: float
+    noticeable: bool  # fair_chi_square_p < SHORTFALL_ALPHA
+
+
+def entropy_shortfall(bits_2d: npt.ArrayLike, alpha: float = SHORTFALL_ALPHA) -> EntropyShortfall:
+    arr = _as_bits_2d(bits_2d)
+    n_shots, n_qubits = arr.shape
+    mean_entropy = float(per_qubit_shannon_entropy(arr).mean())
+    z_scores = (arr.mean(axis=0, dtype=np.float64) - 0.5) / math.sqrt(0.25 / n_shots)
+    chi_square = float(np.sum(z_scores**2))
+    p_value = float(stats.chi2.sf(chi_square, n_qubits))
+    return EntropyShortfall(
+        mean_entropy=mean_entropy,
+        shortfall=1.0 - mean_entropy,
+        estimator_bias=entropy_estimator_bias(n_shots),
+        fair_chi_square=chi_square,
+        fair_chi_square_dof=n_qubits,
+        fair_chi_square_p=p_value,
+        noticeable=p_value < alpha,
+    )
+
+
+# Which way do the qubits lean? A two-sided sign test on how many qubits read 1 less than
+# half the time. Below this p-value the lean has a direction; otherwise it is "mixed".
+DIRECTION_ALPHA = 0.01
+
+
+@dataclass(frozen=True)
+class BiasDirection:
+    n_below_half: int
+    n_above_half: int
+    sign_test_p: float
+    direction: str  # "toward_0", "toward_1", or "mixed"
+
+
+def bias_direction(p_one: npt.ArrayLike, alpha: float = DIRECTION_ALPHA) -> BiasDirection:
+    p = np.asarray(p_one, dtype=np.float64).reshape(-1)
+    below, above = int(np.sum(p < 0.5)), int(np.sum(p > 0.5))
+    if below + above == 0:
+        return BiasDirection(below, above, 1.0, "mixed")
+    p_value = float(stats.binomtest(below, below + above, 0.5).pvalue)
+    if p_value >= alpha:
+        return BiasDirection(below, above, p_value, "mixed")
+    return BiasDirection(below, above, p_value, "toward_0" if below > above else "toward_1")
