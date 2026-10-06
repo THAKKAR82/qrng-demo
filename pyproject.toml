@@ -46,7 +46,7 @@ strict = true
 files = ["pipeline", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["qiskit.*", "qiskit_ibm_runtime.*", "matplotlib.*"]
+module = ["qiskit.*", "qiskit_ibm_runtime.*", "matplotlib.*", "requests.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

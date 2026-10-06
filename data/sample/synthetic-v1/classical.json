@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "run_id": "synthetic-v1",
+  "created_utc": "2026-10-06T01:10:41Z",
+  "synthetic": true,
+  "generator": "random.Random (MT19937)",
+  "seed_source": "os.urandom",
+  "seed_bytes": 32,
+  "seed_stored": false,
+  "seed_discarded": true,
+  "method": "getrandbits(32)",
+  "n_words": 6250,
+  "word_bits": 32,
+  "bit_order": "msb_first",
+  "matched_bits": 200000,
+  "n_bits": 200000,
+  "software": {
+    "python": "3.13.9",
+    "numpy": "2.5.3",
+    "qiskit": "2.5.2",
+    "qiskit-ibm-runtime": "0.50.0"
+  }
+}

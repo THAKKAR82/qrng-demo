@@ -77,11 +77,27 @@ print("Usage:", {k: v for k, v in service.usage().items() if "seconds" in k})
 EOF
 ```
 
-Expect a list of backends such as `ibm_fez`, and a plan of `open`. The script deliberately doesn't print the CRN. Don't paste its output anywhere public.
+Expect a list of backends such as `ibm_fez`, and `[('open', 'free')]` for the plan and pricing type. The script deliberately doesn't print the CRN. Don't paste its output anywhere public.
 
 ### Real collection
 
-Only the human runs real collection. It is interactive by design: it shows a summary and asks you to type the backend name before it submits anything. See SPEC.md, Section 6.3.
+Only the human runs real collection. It is interactive by design: it confirms the Open Plan (`plan` must be exactly `open` and `pricing_type` exactly `free`; if the API can't tell, you are asked to type `open plan`), checks the remaining allowance, shows a summary with a rough QPU-time estimate, and asks you to type the backend name before it submits anything. See SPEC.md, Section 6.3.
+
+```sh
+source .venv/bin/activate
+python -m pipeline.tasks collect-quantum --dry-run   # offline rehearsal against a fake backend
+python -m pipeline.tasks collect-quantum             # real: 100 lowest-readout-error qubits, 2,000 shots
+```
+
+Useful flags: `--shots N`, `--qubits N`, `--backend ibm_fez`, `--no-qubit-selection`, `--physical-qubits 3,7,12`. The run lands in `data/runs/<UTC time>_<backend>/` with `quantum.npz`, `quantum.json`, and the matching `classical.npz` and `classical.json`. Commit that folder.
+
+### Offline data
+
+```sh
+python -m pipeline.tasks make-sample                                # SYNTHETIC sample in data/sample/synthetic-v1/
+python -m pipeline.tasks collect-classical --run <run_id>           # classical stream for an existing run
+python -m pipeline.tasks collect-classical --sample <name> --bits N # standalone classical stream
+```
 
 ## Working with Claude Code
 

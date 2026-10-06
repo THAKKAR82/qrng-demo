@@ -1,0 +1,647 @@
+{
+  "schema_version": 1,
+  "run_id": "synthetic-v1",
+  "created_utc": "2026-10-06T01:10:41Z",
+  "source": "synthetic",
+  "synthetic": true,
+  "note": "SYNTHETIC DATA: not from quantum hardware. Independent Bernoulli bits from NumPy.",
+  "generator": {
+    "library": "numpy.random.default_rng",
+    "seed": 20261005,
+    "distribution": "independent Bernoulli per column",
+    "p_one_range": [
+      0.42,
+      0.48
+    ]
+  },
+  "backend": null,
+  "plan": null,
+  "job": {
+    "job_id": null,
+    "shots": 2000
+  },
+  "qubits": [
+    {
+      "column": 0,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4404
+    },
+    {
+      "column": 1,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4442
+    },
+    {
+      "column": 2,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4312
+    },
+    {
+      "column": 3,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4469
+    },
+    {
+      "column": 4,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4577
+    },
+    {
+      "column": 5,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4657
+    },
+    {
+      "column": 6,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4512
+    },
+    {
+      "column": 7,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4498
+    },
+    {
+      "column": 8,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4374
+    },
+    {
+      "column": 9,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4338
+    },
+    {
+      "column": 10,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4562
+    },
+    {
+      "column": 11,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4228
+    },
+    {
+      "column": 12,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4344
+    },
+    {
+      "column": 13,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4705
+    },
+    {
+      "column": 14,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4254
+    },
+    {
+      "column": 15,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4778
+    },
+    {
+      "column": 16,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4211
+    },
+    {
+      "column": 17,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4725
+    },
+    {
+      "column": 18,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4572
+    },
+    {
+      "column": 19,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4329
+    },
+    {
+      "column": 20,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4714
+    },
+    {
+      "column": 21,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4407
+    },
+    {
+      "column": 22,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4473
+    },
+    {
+      "column": 23,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4622
+    },
+    {
+      "column": 24,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4401
+    },
+    {
+      "column": 25,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4714
+    },
+    {
+      "column": 26,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.42
+    },
+    {
+      "column": 27,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4663
+    },
+    {
+      "column": 28,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4286
+    },
+    {
+      "column": 29,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4635
+    },
+    {
+      "column": 30,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4236
+    },
+    {
+      "column": 31,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4576
+    },
+    {
+      "column": 32,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4593
+    },
+    {
+      "column": 33,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4241
+    },
+    {
+      "column": 34,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4398
+    },
+    {
+      "column": 35,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4577
+    },
+    {
+      "column": 36,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4345
+    },
+    {
+      "column": 37,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4507
+    },
+    {
+      "column": 38,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4741
+    },
+    {
+      "column": 39,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4366
+    },
+    {
+      "column": 40,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.432
+    },
+    {
+      "column": 41,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4533
+    },
+    {
+      "column": 42,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4409
+    },
+    {
+      "column": 43,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4495
+    },
+    {
+      "column": 44,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4516
+    },
+    {
+      "column": 45,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4614
+    },
+    {
+      "column": 46,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4519
+    },
+    {
+      "column": 47,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4623
+    },
+    {
+      "column": 48,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4263
+    },
+    {
+      "column": 49,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.465
+    },
+    {
+      "column": 50,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4391
+    },
+    {
+      "column": 51,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4234
+    },
+    {
+      "column": 52,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.429
+    },
+    {
+      "column": 53,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4488
+    },
+    {
+      "column": 54,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4627
+    },
+    {
+      "column": 55,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4368
+    },
+    {
+      "column": 56,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4478
+    },
+    {
+      "column": 57,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4442
+    },
+    {
+      "column": 58,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.438
+    },
+    {
+      "column": 59,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4251
+    },
+    {
+      "column": 60,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.461
+    },
+    {
+      "column": 61,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4377
+    },
+    {
+      "column": 62,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4642
+    },
+    {
+      "column": 63,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4736
+    },
+    {
+      "column": 64,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4282
+    },
+    {
+      "column": 65,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4745
+    },
+    {
+      "column": 66,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4579
+    },
+    {
+      "column": 67,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4215
+    },
+    {
+      "column": 68,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4769
+    },
+    {
+      "column": 69,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4773
+    },
+    {
+      "column": 70,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4406
+    },
+    {
+      "column": 71,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4696
+    },
+    {
+      "column": 72,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4202
+    },
+    {
+      "column": 73,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4224
+    },
+    {
+      "column": 74,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4456
+    },
+    {
+      "column": 75,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4317
+    },
+    {
+      "column": 76,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4389
+    },
+    {
+      "column": 77,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4205
+    },
+    {
+      "column": 78,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4707
+    },
+    {
+      "column": 79,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4213
+    },
+    {
+      "column": 80,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4282
+    },
+    {
+      "column": 81,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.461
+    },
+    {
+      "column": 82,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4536
+    },
+    {
+      "column": 83,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4473
+    },
+    {
+      "column": 84,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4712
+    },
+    {
+      "column": 85,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4269
+    },
+    {
+      "column": 86,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4451
+    },
+    {
+      "column": 87,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4334
+    },
+    {
+      "column": 88,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4451
+    },
+    {
+      "column": 89,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4697
+    },
+    {
+      "column": 90,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4454
+    },
+    {
+      "column": 91,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4274
+    },
+    {
+      "column": 92,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4787
+    },
+    {
+      "column": 93,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4665
+    },
+    {
+      "column": 94,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4744
+    },
+    {
+      "column": 95,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.442
+    },
+    {
+      "column": 96,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4432
+    },
+    {
+      "column": 97,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4722
+    },
+    {
+      "column": 98,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4459
+    },
+    {
+      "column": 99,
+      "physical_qubit": "synthetic",
+      "readout_error": null,
+      "p_one": 0.4779
+    }
+  ],
+  "qubit_selection": {
+    "used": false,
+    "method": "synthetic",
+    "candidates": null,
+    "calibration_utc": null
+  },
+  "bits": {
+    "file": "quantum.npz",
+    "array": "bits",
+    "dtype": "uint8",
+    "shape": [
+      2000,
+      100
+    ],
+    "columns": "logical qubit order"
+  },
+  "software": {
+    "python": "3.13.9",
+    "numpy": "2.5.3",
+    "qiskit": "2.5.2",
+    "qiskit-ibm-runtime": "0.50.0"
+  }
+}

@@ -2,7 +2,10 @@
 
 Tasks registered here must follow SPEC.md. In particular, ``setup-check`` reports
 versions only: it never imports qiskit_ibm_runtime, never constructs a
-QiskitRuntimeService, and never touches ~/.qiskit or any credentials.
+QiskitRuntimeService, and never touches ~/.qiskit or any credentials. Collector modules
+are imported lazily, inside the task that needs them.
+
+``collect-quantum`` (without ``--dry-run``) is for the human only: it submits a real job.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 
-from pipeline.paths import REPO_ROOT, UI_DIR
+from pipeline.paths import REPO_ROOT, RUNS_DIR, SAMPLE_DIR, UI_DIR
 
 MIN_PYTHON = (3, 11)
 _PIN_RE = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*==\s*([^\s;#]+)")
@@ -30,6 +33,8 @@ class Task:
     name: str
     help: str
     run: Callable[[argparse.Namespace], int]
+    configure: Callable[[argparse.ArgumentParser], None] | None = None
+    human_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -136,6 +141,110 @@ def setup_check(_: argparse.Namespace) -> int:
     return 0 if problems == 0 else 1
 
 
+def _positive_int(text: str) -> int:
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return value
+
+
+def _qubit_list(text: str) -> list[int]:
+    try:
+        return [int(part) for part in text.split(",") if part.strip()]
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected comma-separated integers, e.g. 3,7,12") from None
+
+
+def _configure_make_sample(parser: argparse.ArgumentParser) -> None:
+    from pipeline import sample
+
+    parser.add_argument("--name", default=sample.SAMPLE_NAME, help="folder under data/sample/")
+
+
+def make_sample(args: argparse.Namespace) -> int:
+    from pipeline import sample
+
+    folder = sample.make_sample(args.name)
+    print(f"Wrote SYNTHETIC sample to {folder.relative_to(REPO_ROOT)} (not from quantum hardware).")
+    return 0
+
+
+def _configure_collect_classical(parser: argparse.ArgumentParser) -> None:
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--run", help="run id under data/runs/ (matches its quantum bit count)")
+    target.add_argument("--sample", help="name under data/sample/ (standalone generation)")
+    parser.add_argument(
+        "--bits", type=_positive_int, help="bit count; required if the folder has no quantum data"
+    )
+
+
+def collect_classical(args: argparse.Namespace) -> int:
+    from pipeline import classical
+
+    if args.run:
+        folder = RUNS_DIR / args.run
+        if not folder.is_dir():
+            print(f"No such run: {args.run}")
+            return 1
+        overwrite = False
+    else:
+        folder = SAMPLE_DIR / args.sample
+        folder.mkdir(parents=True, exist_ok=True)
+        overwrite = True
+    try:
+        meta = classical.collect_for_folder(folder, n_bits=args.bits, overwrite=overwrite)
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        print(exc)
+        return 1
+    print(
+        f"Wrote {meta['n_words']} words ({meta['n_bits']} bits) to "
+        f"{folder.relative_to(REPO_ROOT)}. Seed discarded, never stored."
+    )
+    return 0
+
+
+def _configure_collect_quantum(parser: argparse.ArgumentParser) -> None:
+    from pipeline import quantum
+
+    parser.add_argument("--shots", type=_positive_int, default=quantum.DEFAULT_SHOTS)
+    parser.add_argument(
+        "--qubits",
+        type=_positive_int,
+        default=quantum.DEFAULT_QUBITS,
+        help="number of qubits N (capped at the backend size)",
+    )
+    parser.add_argument("--backend", help="backend name (default: least busy operational)")
+    parser.add_argument(
+        "--no-qubit-selection",
+        action="store_true",
+        help="use physical qubits 0..N-1 instead of the N lowest-readout-error qubits",
+    )
+    parser.add_argument(
+        "--physical-qubits",
+        type=_qubit_list,
+        help="explicit physical qubits, e.g. 3,7,12 (overrides --qubits)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="plan against a local fake backend; no account, no network, writes nothing",
+    )
+
+
+def collect_quantum(args: argparse.Namespace) -> int:
+    from pipeline import quantum
+
+    cfg = quantum.CollectConfig(
+        shots=args.shots,
+        n_qubits=len(args.physical_qubits) if args.physical_qubits else args.qubits,
+        backend_name=args.backend,
+        select_qubits=not args.no_qubit_selection,
+        physical_qubits=args.physical_qubits,
+        dry_run=args.dry_run,
+    )
+    return quantum.run_task(cfg)
+
+
 TASKS: dict[str, Task] = {
     task.name: task
     for task in (
@@ -143,6 +252,25 @@ TASKS: dict[str, Task] = {
             "setup-check",
             "Report Python, Node, and package versions (no credentials).",
             setup_check,
+        ),
+        Task(
+            "make-sample",
+            "Regenerate the SYNTHETIC sample in data/sample/ (offline).",
+            make_sample,
+            _configure_make_sample,
+        ),
+        Task(
+            "collect-classical",
+            "Generate the classical MT19937 stream for a run or a sample (offline).",
+            collect_classical,
+            _configure_collect_classical,
+        ),
+        Task(
+            "collect-quantum",
+            "HUMAN ONLY: submit a real IBM Quantum job (--dry-run is safe, offline).",
+            collect_quantum,
+            _configure_collect_quantum,
+            human_only=True,
         ),
     )
 }
@@ -152,7 +280,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m pipeline.tasks", description=__doc__)
     sub = parser.add_subparsers(dest="task", metavar="<task>", required=True)
     for task in TASKS.values():
-        sub.add_parser(task.name, help=task.help)
+        task_parser = sub.add_parser(task.name, help=task.help, description=task.help)
+        if task.configure is not None:
+            task.configure(task_parser)
     args = parser.parse_args(argv)
     return TASKS[args.task].run(args)
 

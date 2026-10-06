@@ -77,7 +77,7 @@ These rules apply to all code, copy, charts, notebook text, and presenter notes.
 
 - **Circuit:** a Hadamard gate then a measurement on each of N selected physical qubits. Qubit i in the logical circuit is measured into classical bit i.
 - **Backend:** a real IBM Quantum backend (`simulator=False`, operational). Never a simulator or a fake backend for anything written to `data/runs/`.
-- **Execution:** `SamplerV2` in job mode (a single job, not a session), with no error mitigation and no twirling.
+- **Execution:** the client-side `Sampler` from `qiskit_ibm_runtime.executor_sampler` in job mode (a single job, not a session). In qiskit-ibm-runtime 0.50 the old `SamplerV2` is deprecated and this is its named replacement. No error mitigation, no gate or measurement twirling, no dynamical decoupling. Every Sampler option is set explicitly rather than left to defaults, and the full option set is recorded in `quantum.json`.
 - **Bit order:** Qiskit bitstrings are little-endian. In the string `"001"`, the rightmost character is classical bit 0, so classical bit 0 = 1. Do not index bitstrings directly. Convert with `BitArray.to_bool_array(order="little")`, which gives an array of shape `(shots, N)` whose column `j` is classical bit `j`, and therefore logical qubit `j`, and therefore physical qubit `physical_qubits[j]`. Unit tests must pin this with a hand-written example.
 - **Flattening:** shot-major order, meaning all N qubits of shot 1, then all N qubits of shot 2, and so on. With the `(shots, N)` array, this is `bits.reshape(-1)` in NumPy's default C order.
 - **Metadata** keeps the physical qubit for every column, so per-qubit analysis is always possible.
@@ -89,25 +89,30 @@ Each real collection run is a committed folder `data/runs/<run_id>/`, where `run
 | File | Contents |
 |---|---|
 | `quantum.npz` | `bits`: `uint8`, shape `(shots, N)`, values 0/1, columns in logical-qubit order. |
+| `quantum.json` | Everything needed to interpret the quantum bits (below). |
 | `classical.npz` | `words`: `uint32`, shape `(n_words,)`, in generation order. |
-| `metadata.json` | Everything needed to interpret the bits (below). Never any key, token, CRN, or instance name. |
+| `classical.json` | Everything needed to interpret the classical words (below). |
 | `results.json` | Output of `analyze` (Section 7). The UI reads only this file. |
 
-`metadata.json` contains:
+Neither JSON file ever contains any key, token, CRN, or instance name. Run folders are committed, so the collector warns if a folder exceeds 10 MB.
+
+`quantum.json` contains:
 
 - `schema_version`, `run_id`, `created_utc`
 - `source`: `"ibm_quantum_hardware"` or `"synthetic"`, and a boolean `synthetic`
-- `backend`: name and qubit count; `plan`: `"open"`
-- `job`: job ID, shots, submit and completion times, and quantum seconds used (if the job reports them)
+- `backend`: name and qubit count; `plan`: the `plan` and `pricing_type` values checked, and how they were verified (`"api"` or `"human_typed_open_plan"`)
+- `job`: job ID, shots, submit and completion times, and QPU seconds used (if the job reports them)
 - `qubits`: a list with one entry per column: `column`, `physical_qubit`, and `readout_error` at selection time
-- `qubit_selection`: `method` (`"lowest_readout_error"` or `"explicit"`), number of candidates considered, and the calibration timestamp used
+- `qubit_selection`: whether selection by readout error was used, `method` (`"lowest_readout_error"`, `"first_n"`, or `"explicit"`), number of candidates considered, and the calibration timestamp used
 - `circuit`: plain description, optimization level, and gate counts after transpilation
-- `software`: Python, qiskit, and qiskit-ibm-runtime versions
-- `classical`: generator `"random.Random (MT19937)"`, seed source `"os.urandom"`, `seed_stored: false`, word count, word size 32, bit order `"msb_first"`
+- `sampler`: the Sampler class and its full, finalized option set, plus explicit flags for readout-error mitigation, gate twirling, measurement twirling, and dynamical decoupling (all `false`)
+- `software`: Python, numpy, qiskit, and qiskit-ibm-runtime versions
+
+`classical.json` contains `schema_version`, `run_id`, `created_utc`, `synthetic`, generator `"random.Random (MT19937)"`, seed source `"os.urandom"`, `seed_stored: false`, `seed_discarded: true`, word count, word size 32, bit order `"msb_first"`, the number of bits it was matched to, and the number of bits generated.
 
 ### 5.4 Synthetic sample data
 
-`data/sample/<name>/` (starting with `data/sample/synthetic-v1/`) uses exactly the same file layout so the notebook, tests, and UI can run without hardware. Its quantum-like bits are drawn from NumPy with a fixed per-column P(1) and a fixed seed, and its metadata says `source: "synthetic"` and `synthetic: true`. Fake physical-qubit numbers are not used; the qubit list says `"synthetic"` instead. Its classical stream is produced exactly as in Section 5.1. Sample data is regenerated only by `make-sample`.
+`data/sample/<name>/` (starting with `data/sample/synthetic-v1/`) uses exactly the same file layout so the notebook, tests, and UI can run without hardware. Its quantum-like bits are independent Bernoulli draws from NumPy with a fixed per-column P(1) around 0.45 and a fixed seed, and both `quantum.json` and `classical.json` say `synthetic: true` (and `quantum.json` says `source: "synthetic"`). Fake physical-qubit numbers are not used; the qubit list says `"synthetic"` instead. Its classical stream is produced exactly as in Section 5.1. Sample data is regenerated only by `make-sample`.
 
 `data/scratch/` is gitignored and holds temporary outputs (executed notebooks, experiments).
 
@@ -129,15 +134,22 @@ This task runs on the human's machine only. It is never run by Claude, CI, or te
 
 1. **Refuses to run non-interactively.** It requires stdin to be a TTY, so tool-driven shells cannot run it.
 2. Loads the account by name (Section 6.1).
-3. **Confirms the Open Plan.** It finds the entry in `service.instances()` whose `crn` equals `service.active_instance()`, and requires `plan == "open"`. (In qiskit-ibm-runtime 0.50, each entry carries `plan`, the lowercased catalog display name, and `pricing_type`.) It also refuses if `pricing_type` is `"paid"`. The README's manual check shows the human the exact strings their account returns; if they differ from these, update this section first. If any check fails, or the entry can't be found, it aborts before doing anything else. It prints only "Open Plan: confirmed" or the reason for refusal, never the CRN or instance name.
-4. **Checks the remaining allowance.** It calls `service.usage()` and aborts if `usage_remaining_seconds` is missing or below 60 seconds.
-5. Picks the backend: `--backend <name>` if given, otherwise `service.least_busy(operational=True, simulator=False)`.
-6. Picks qubits: by default the N qubits with the lowest measurement error in `backend.target["measure"]`, skipping qubits with no reported error. `--qubits 3,7,12` selects explicitly. It records the errors and the calibration time.
-7. Builds and transpiles the circuit with `generate_preset_pass_manager(optimization_level=1, backend=backend, initial_layout=<qubits>)`, then checks the layout of the transpiled circuit matches the requested physical qubits.
-8. **Shows a summary and asks for confirmation:** backend, qubits, shots, and remaining allowance. The human must type the backend name to proceed.
-9. Submits one `SamplerV2` job, waits for it, converts the result as described in Section 5.2, and writes `quantum.npz` and `metadata.json` to a new run folder. It then runs `collect-classical` for the same run.
+3. **Confirms the Open Plan.** It finds the entry in `service.instances()` whose `crn` equals `service.active_instance()`. (In qiskit-ibm-runtime 0.50, each entry carries `plan`, the lowercased catalog display name, and `pricing_type`.) The human's manual check (README) on the `qrng-open` account returned exactly `plan == "open"` and `pricing_type == "free"`, so:
+   - If both values are reported and are exactly `"open"` and `"free"`, it prints "Open Plan: confirmed" and continues.
+   - If either value is reported and is anything else (a different string, different case, or a non-string), it refuses and aborts.
+   - If the plan **cannot be determined** (the API call fails, no single entry matches the active instance, or either value is missing), it says so and asks the human to type `open plan` to confirm. Anything else aborts. The run's `quantum.json` records that the plan was confirmed by the human rather than by the API.
 
-Defaults: N = 20 qubits, 8,192 shots (163,840 quantum bits).
+   It never prints the CRN or instance name. If the account starts returning different strings, update this section first.
+4. **Checks the remaining allowance.** It calls `service.usage()` and aborts if `usage_remaining_seconds` is missing or below 60 seconds.
+5. Picks the backend: `--backend <name>` if given, otherwise `service.least_busy(operational=True, simulator=False)`. It refuses a simulator.
+6. Picks qubits. N is `--qubits N` (capped at the backend's size). By default it takes the N qubits with the lowest measurement error in `backend.target["measure"]` at submission time, skipping qubits with no reported error. `--no-qubit-selection` disables this and uses physical qubits `0 … N−1`; `--physical-qubits 3,7,12` selects explicitly. Either way it records each chosen qubit's readout error and the calibration time.
+7. Builds and transpiles the circuit with `generate_preset_pass_manager(optimization_level=1, backend=backend, initial_layout=<qubits>)`, then checks the layout of the transpiled circuit matches the requested physical qubits.
+8. **Shows a summary and asks for confirmation:** backend, qubits, shots, a rough QPU-time estimate, and remaining allowance. The human must type the backend name to proceed.
+9. Submits one Sampler job (Section 5.2), prints the job ID immediately, and polls with a one-line status display until the job finishes. It converts the result as described in Section 5.2 and writes `quantum.npz` and `quantum.json` (including the QPU usage the job reports) to a new run folder. It then generates the matching classical stream into the same folder (`classical.npz`, `classical.json`).
+
+Network and authentication failures end with a short, redacted message (Section 6.1), not a traceback.
+
+Defaults: N = 100 qubits (fewer if the backend is smaller), 2,000 shots (200,000 quantum bits).
 
 A `--dry-run` flag runs steps 5 to 8 against a local fake backend from `qiskit_ibm_runtime.fake_provider`, with no account and no network access. It prints what would be submitted and writes nothing to `data/runs/`. Claude may run the dry run.
 
@@ -188,7 +200,7 @@ Everything runs through `python -m pipeline.tasks <task>`.
 |---|---|---|
 | `setup-check` | Reports Python, Node, and package versions against the pins. Touches no credentials. | Anyone |
 | `make-sample` | Regenerates `data/sample/synthetic-v1/`. | Anyone |
-| `collect-classical --run <id>` | Adds `classical.npz` and its metadata to a run. | Anyone |
+| `collect-classical --run <id>` / `--sample <name> [--bits N]` | Adds `classical.npz` and `classical.json` to a run (matching its quantum bit count), or generates them standalone into `data/sample/<name>/`. | Anyone |
 | `collect-quantum` | Real hardware collection (Section 6.3). | **Human only** |
 | `analyze --run <id>` / `--sample <name>` | Writes `results.json`. | Anyone |
 | `notebook` | Executes the notebook into `data/scratch/`. | Anyone |
@@ -197,7 +209,7 @@ Everything runs through `python -m pipeline.tasks <task>`.
 | `check` | Runs ruff, mypy, pytest, and the UI lint and type check. | Anyone |
 | `refresh` | Runs `collect-quantum`, `analyze`, and `build-demo` in one go. | **Human only** |
 
-Only `setup-check` exists so far. The others are added in later tasks.
+`setup-check`, `make-sample`, `collect-classical`, and `collect-quantum` exist so far. The others are added in later tasks.
 
 ## 11. Engineering conventions
 

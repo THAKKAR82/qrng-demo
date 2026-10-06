@@ -45,9 +45,55 @@ def test_unknown_task_is_rejected() -> None:
     assert excinfo.value.code == 2
 
 
-def test_only_safe_tasks_registered() -> None:
-    # Collection tasks do not exist yet; when they are added they must be human-only.
-    assert set(TASKS) == {"setup-check"}
+def test_registered_tasks_and_human_only() -> None:
+    assert set(TASKS) == {"setup-check", "make-sample", "collect-classical", "collect-quantum"}
+    assert {name for name, task in TASKS.items() if task.human_only} == {"collect-quantum"}
+
+
+def test_collect_quantum_cli_builds_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pipeline import quantum
+
+    seen: list[quantum.CollectConfig] = []
+
+    def fake_run_task(cfg: quantum.CollectConfig) -> int:
+        seen.append(cfg)
+        return 0
+
+    monkeypatch.setattr(quantum, "run_task", fake_run_task)
+    assert main(["collect-quantum", "--shots", "100", "--qubits", "7", "--backend", "ibm_fez"]) == 0
+    assert main(["collect-quantum", "--no-qubit-selection", "--dry-run"]) == 0
+    assert main(["collect-quantum", "--physical-qubits", "3,7,12"]) == 0
+    first, second, third = seen
+    assert (first.shots, first.n_qubits, first.backend_name, first.select_qubits) == (
+        100,
+        7,
+        "ibm_fez",
+        True,
+    )
+    assert (second.shots, second.n_qubits) == (2000, 100)
+    assert second.select_qubits is False
+    assert second.dry_run is True
+    assert third.physical_qubits == [3, 7, 12]
+    assert third.n_qubits == 3
+
+
+def test_collect_classical_cli_standalone_sample(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import pipeline.tasks as tasks
+
+    monkeypatch.setattr(tasks, "SAMPLE_DIR", tmp_path)
+    monkeypatch.setattr(tasks, "REPO_ROOT", tmp_path)
+    assert main(["collect-classical", "--sample", "c", "--bits", "100"]) == 0
+    assert (tmp_path / "c" / "classical.npz").is_file()
+    assert main(["collect-classical", "--sample", "empty"]) == 1
+
+
+def test_collect_classical_cli_missing_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import pipeline.tasks as tasks
+
+    monkeypatch.setattr(tasks, "RUNS_DIR", tmp_path)
+    assert main(["collect-classical", "--run", "nope"]) == 1
 
 
 def test_setup_check_touches_no_credentials(tmp_path: Path) -> None:
