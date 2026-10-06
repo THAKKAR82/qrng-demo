@@ -20,7 +20,12 @@ import numpy.typing as npt
 
 from pipeline import runs
 from pipeline.analysis import analyze_bias, binary_entropy, bitmap, shannon_entropy_per_bit
-from pipeline.attacker import AttackResult, BiasAttacker, MersenneTwisterAttacker
+from pipeline.attacker import (
+    AttackResult,
+    BiasAttacker,
+    MersenneTwisterAttacker,
+    cross_checks,
+)
 from pipeline.classical import words_to_bits
 from pipeline.paths import REPO_ROOT, RUNS_DIR, SAMPLE_DIR, UI_DATA_DIR
 from pipeline.sample import SAMPLE_NAME
@@ -127,6 +132,18 @@ def _attacker(result: AttackResult) -> dict[str, Any]:
     }
 
 
+def _cross_check(result: AttackResult) -> dict[str, Any]:
+    return {
+        "name": result.attacker,
+        "accuracy": _num(result.accuracy),
+        "ci_low": _num(result.ci_low),
+        "ci_high": _num(result.ci_high),
+        "n_predicted": result.n_predicted,
+        "min_entropy": _num(result.min_entropy),
+        "consistent_with_half": result.ci_low <= 0.5 <= result.ci_high,
+    }
+
+
 def _next_bits(
     stream: npt.NDArray[np.uint8], result: AttackResult, start_bit: int
 ) -> dict[str, Any]:
@@ -162,6 +179,7 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
     q_attack = bias_attacker.attack(q_bits)
     c_attack = MersenneTwisterAttacker().attack(words)
     assert q_attack.per_qubit_accuracy is not None
+    cross = cross_checks(q_bits, words)
 
     per_qubit_entropy = [binary_entropy(float(p)) for p in bias.p_one]
     abs_bias = np.abs(bias.p_one - 0.5)
@@ -246,6 +264,10 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
             "bitmap": {"size": BITMAP_SIZE, "rows": _rows(bitmap(c_stream, BITMAP_SIZE))},
             "next_bits": _next_bits(c_stream, c_attack, c_attack.n_training_bits),
             "attacker": _attacker(c_attack),
+        },
+        "cross_checks": {
+            "mt_on_quantum": _cross_check(cross.mt_on_quantum),
+            "bias_on_classical": _cross_check(cross.bias_on_classical),
         },
     }
 

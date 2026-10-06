@@ -46,6 +46,14 @@ def words_to_bits(words: npt.ArrayLike) -> npt.NDArray[np.uint8]:
     return np.unpackbits(big_endian.view(np.uint8))
 
 
+def bits_to_words(bits: npt.ArrayLike) -> npt.NDArray[np.uint32]:
+    """Pack bits into words most significant bit first (the inverse of ``words_to_bits``).
+    Trailing bits that do not fill a whole word are dropped."""
+    flat = np.asarray(bits, dtype=np.uint8).reshape(-1)
+    whole = flat[: flat.size - flat.size % WORD_BITS]
+    return np.packbits(whole).view(">u4").astype(np.uint32)
+
+
 def quantum_bit_count(folder: Path) -> int:
     with np.load(folder / runs.QUANTUM_NPZ) as data:
         return int(data["bits"].size)

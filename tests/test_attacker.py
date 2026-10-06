@@ -7,6 +7,7 @@ from pipeline.attacker import (
     MT_STATE_WORDS,
     BiasAttacker,
     MersenneTwisterAttacker,
+    cross_checks,
     running_accuracy,
     untemper,
 )
@@ -129,8 +130,8 @@ def test_bias_attacker_learns_only_from_training_half() -> None:
     bits[:50] = 1  # training half all ones, held-out half all zeros
     result = BiasAttacker().attack(bits)
     assert result.accuracy == 0.0
-    # Accuracy below 0.5 is sampling noise for a binary guess, so H∞ is capped at 1.
-    assert result.min_entropy == 1.0
+    # Always wrong means flipping every guess is always right: fully predictable.
+    assert result.min_entropy == 0.0
 
 
 def test_bias_attacker_reports_wilson_interval() -> None:
@@ -138,7 +139,36 @@ def test_bias_attacker_reports_wilson_interval() -> None:
     bits = (rng.random((400, 50)) < 0.4).astype(np.uint8)
     result = BiasAttacker().attack(bits)
     assert result.ci_low < result.accuracy < result.ci_high
+    # Above 0.5 the upper bound is the more predictable one.
+    assert result.min_entropy_conservative == pytest.approx(-np.log2(result.ci_high))
+
+
+def test_conservative_min_entropy_below_half_uses_lower_bound() -> None:
+    # Training half all ones; held-out half 30% ones, so the attacker scores about 0.3.
+    rng = np.random.default_rng(8)
+    bits = np.ones((800, 50), dtype=np.uint8)
+    bits[400:] = (rng.random((400, 50)) < 0.3).astype(np.uint8)
+    result = BiasAttacker().attack(bits)
+    assert result.accuracy < 0.5
+    # max(a, 1 - a) is largest at ci_low here, so that bound is the conservative one.
+    assert result.min_entropy_conservative == pytest.approx(-np.log2(1 - result.ci_low))
     assert result.min_entropy_conservative < result.min_entropy
+
+
+def test_cross_checks_score_about_half() -> None:
+    # Biased quantum-like bits and a real MT stream: each attacker on the wrong stream.
+    rng = np.random.default_rng(11)
+    q_bits = (rng.random((2000, 100)) < 0.45).astype(np.uint8)
+    words = generate_words(6250)
+    checks = cross_checks(q_bits, words)
+    assert checks.mt_on_quantum.attacker == MersenneTwisterAttacker.name
+    assert checks.bias_on_classical.attacker == BiasAttacker.name
+    # Quantum bits pack into 6250 words, 624 observed, the rest predicted.
+    assert checks.mt_on_quantum.n_predicted == (6250 - MT_STATE_WORDS) * 32
+    # Classical bits are reshaped like the quantum array and split in half by shots.
+    assert checks.bias_on_classical.n_predicted == 1000 * 100
+    for result in (checks.mt_on_quantum, checks.bias_on_classical):
+        assert result.accuracy == pytest.approx(0.5, abs=0.01)
 
 
 def test_bias_attacker_needs_two_shots() -> None:

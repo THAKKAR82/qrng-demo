@@ -179,6 +179,16 @@ def test_export_writes_valid_demo_without_secrets(tmp_path: Path) -> None:
     assert q["qubits"][3]["p_one"] == pytest.approx(bits[:, 3].mean(), abs=1e-4)
     assert q["bias_summary"]["worst"]["column"] == 3
 
+    # Fairness cross-checks: each attacker against the other stream.
+    cross = demo["cross_checks"]
+    assert cross["mt_on_quantum"]["n_predicted"] == (40_000 // 32 - 624) * 32
+    assert cross["bias_on_classical"]["n_predicted"] == 200 * 100
+    for check in cross.values():
+        # The classical stream is freshly seeded, so a 95% CI misses 0.5 one time in 20;
+        # check the flag against its own CI, and the accuracy against a wide band.
+        assert check["consistent_with_half"] is (check["ci_low"] <= 0.5 <= check["ci_high"])
+        assert check["accuracy"] == pytest.approx(0.5, abs=0.05)
+
 
 def test_export_of_sample_is_labelled_synthetic(tmp_path: Path) -> None:
     out = tmp_path / "demo.json"

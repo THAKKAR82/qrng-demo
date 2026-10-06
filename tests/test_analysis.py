@@ -52,20 +52,19 @@ def test_shannon_entropy_rejects_empty_and_non_binary() -> None:
         (0.5, 1.0),
         (0.75, 0.4150374992788438),
         (0.55, 0.862496476250065),
+        # Reliably wrong is as good as reliably right: flip every guess.
+        (0.0, 0.0),
+        (0.25, 0.4150374992788438),
+        (0.45, 0.862496476250065),
     ],
 )
 def test_min_entropy_from_accuracy(p_guess: float, expected: float) -> None:
     assert min_entropy_from_accuracy(p_guess) == pytest.approx(expected)
 
 
-def test_min_entropy_of_perfect_prediction_is_positive_zero() -> None:
-    assert math.copysign(1.0, min_entropy_from_accuracy(1.0)) == 1.0
-
-
-@pytest.mark.parametrize("p_guess", [0.0, 0.3, 0.4999])
-def test_min_entropy_below_coin_flip_is_capped_at_one_bit(p_guess: float) -> None:
-    # A binary guesser can never truly do worse than 0.5; below it is sampling noise.
-    assert min_entropy_from_accuracy(p_guess) == 1.0
+@pytest.mark.parametrize("p_guess", [0.0, 1.0])
+def test_min_entropy_of_perfect_prediction_is_positive_zero(p_guess: float) -> None:
+    assert math.copysign(1.0, min_entropy_from_accuracy(p_guess)) == 1.0
 
 
 @pytest.mark.parametrize("p_guess", [-0.1, 1.01, math.nan])

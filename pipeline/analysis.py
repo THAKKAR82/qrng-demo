@@ -45,16 +45,15 @@ def shannon_entropy_per_bit(bits: npt.ArrayLike) -> float:
 
 
 def min_entropy_from_accuracy(p_guess: float) -> float:
-    """``H∞ = -log2(p_guess)`` in bits per bit, capped at 1 bit.
+    """``H∞ = -log2(max(a, 1 - a))`` in bits per bit, for binary-guess accuracy ``a``.
 
-    For a binary guess, accuracy below 0.5 is sampling noise (flipping every guess would
-    beat 0.5), so anything at or below 0.5, including 0, gives the coin-flip value of 1 bit.
+    An attacker who is reliably wrong is as good as one who is reliably right: flipping
+    every guess turns accuracy ``a`` into ``1 - a``. So accuracy 0 and 1 both give 0 bits,
+    and 0.5 gives the coin-flip maximum of 1 bit.
     """
     if math.isnan(p_guess) or not 0.0 <= p_guess <= 1.0:
         raise ValueError(f"p_guess must be a probability, got {p_guess!r}")
-    if p_guess <= 0.5:
-        return 1.0
-    return -math.log2(p_guess) + 0.0  # + 0.0 turns -0.0 into 0.0 at p_guess = 1
+    return -math.log2(max(p_guess, 1.0 - p_guess)) + 0.0  # + 0.0 turns -0.0 into 0.0
 
 
 def wilson_interval(successes: int, n: int, z: float = Z_95) -> tuple[float, float]:

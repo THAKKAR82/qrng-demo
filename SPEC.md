@@ -25,10 +25,10 @@ The difference is **predictability**.
 The headline number is **min-entropy**, measured against a concrete attacker:
 
 ```
-H∞ = −log2(P_guess)
+H∞ = −log2(max(P_guess, 1 − P_guess))
 ```
 
-`P_guess` is the attacker's measured accuracy on bits they did not see: the fraction of held-out bits they predicted correctly. H∞ is in bits of unpredictability per bit of output. H∞ = 0 means fully predictable (P_guess = 1); H∞ = 1 means a coin flip (P_guess = 0.5).
+`P_guess` is the attacker's measured accuracy on bits they did not see: the fraction of held-out bits they predicted correctly. H∞ is in bits of unpredictability per bit of output. An attacker who is reliably wrong is as good as one who is reliably right, because flipping every guess turns accuracy P_guess into 1 − P_guess; so the effective guessing probability is max(P_guess, 1 − P_guess). H∞ = 0 means fully predictable (P_guess = 1 or 0); H∞ = 1 means a coin flip (P_guess = 0.5). H∞ never exceeds 1 bit.
 
 **Shannon entropy** is reported as well, so the audience can see that ordinary statistics don't separate the two sources. For a stream whose fraction of ones is p̂, the per-bit Shannon entropy is `h(p̂) = −p̂·log2(p̂) − (1−p̂)·log2(1−p̂)`. For the quantum stream, report it per physical qubit and also as the mean across qubits. The per-qubit figure is the honest one, because pooling qubits with opposite biases hides those biases.
 
@@ -42,14 +42,16 @@ Each attacker sees a training portion of a stream and predicts the held-out port
 
 ### 3.2 Uncertainty and limits
 
-- Report a 95% Wilson confidence interval for every P_guess. Report H∞ at the point estimate and, conservatively, at the upper bound of P_guess. Cap displayed H∞ at 1 bit; if the point estimate of P_guess is below 0.5, say that this is sampling noise.
+- Report a 95% Wilson confidence interval for every P_guess. Report H∞ at the point estimate and, conservatively, at whichever interval bound gives the larger max(P_guess, 1 − P_guess), which is the lower H∞. A P_guess slightly below 0.5 is sampling noise and should be described that way.
 - H∞ measured this way is min-entropy *against these attackers*. It is not a certified, device-independent bound. A cleverer attacker might exploit drift over time or correlations between qubits. The notebook must include at least one simple extra attacker (predict each qubit's bit from its previous shot) to show such effects are small in our data, or to report them if they aren't.
 
-### 3.3 Expected results
+### 3.3 What to expect
 
 The classical stream should come out at H∞ ≈ 0 bits, because the state-recovery attacker should reach 100% accuracy. The quantum stream should come out well above 0 bits.
 
-The exact quantum value comes from real data. A 100-shot test on `ibm_fez` suggested per-qubit P(1) around 0.4, which gives about 0.74 bits of min-entropy and about 0.97 bits of Shannon entropy. Picking qubits with the lowest readout error should push both closer to 1. None of these numbers may be hard-coded anywhere (see Section 4).
+All values come from data. None may be hard-coded, used as a test expectation, or written into copy (see Section 4).
+
+*Context only, not an expectation:* the first real run, `2026-10-06T013454Z_ibm_fez` (100 qubits selected by lowest readout error from 156, 2,000 shots), measured a bias-attacker P_guess of 0.50396 (95% CI 0.50086–0.50706), so H∞ = 0.989 bits (0.980 at the conservative bound). Per-qubit Shannon entropy averaged 0.99937 bits; per-qubit P(1) ranged from 0.4605 to 0.5385. The classical stream's attacker scored 1.0, so H∞ = 0. Other runs, days, backends and qubit choices will differ.
 
 ## 4. Honesty rules
 
@@ -186,7 +188,7 @@ The Sampler runs locally on Qiskit Aer (a dev dependency). With a fake backend a
 
 `export [--run <run_id> | --sample <name>]` writes `ui/src/data/demo.json`, the only data file the UI imports. By default it uses the latest complete folder in `data/runs/` (run ids start with a UTC timestamp, so the greatest name is the newest); if there is none, it uses `data/sample/synthetic-v1/`. It computes everything with the same `pipeline.analysis` and `pipeline.attacker` functions as `analyze`.
 
-`demo.json` holds: metadata for both sources (backend, job ID, date, qubit count, whether qubits were selected by readout error and from how many candidates, the run folder name, and `synthetic` and `sample` flags); Shannon entropy for each stream (per qubit, mean, and pooled for quantum); per-qubit P(1), readout error, z-score against 0.5, and bias-attacker accuracy; bias summary statistics (mean P(1), mean and worst-case |P(1) − 0.5|); the bias tests below; a 128×128 bitmap of the first 16,384 bits of each stream; the first 200 held-out bits of each stream with the attacker's prediction for each (for an audience guessing game); and both attackers' accuracy, 95% Wilson interval, H∞ at the point estimate and at the upper bound, and running accuracy downsampled to at most 500 points.
+`demo.json` holds: metadata for both sources (backend, job ID, date, qubit count, whether qubits were selected by readout error and from how many candidates, the run folder name, and `synthetic` and `sample` flags); Shannon entropy for each stream (per qubit, mean, and pooled for quantum); per-qubit P(1), readout error, z-score against 0.5, and bias-attacker accuracy; bias summary statistics (mean P(1), mean and worst-case |P(1) − 0.5|); the bias tests below; a 128×128 bitmap of the first 16,384 bits of each stream; the first 200 held-out bits of each stream with the attacker's prediction for each (for an audience guessing game); and both attackers' accuracy, 95% Wilson interval, H∞ at the point estimate and at the conservative bound, and running accuracy downsampled to at most 500 points; and the cross-checks from Section 3.1, each with its accuracy, 95% interval, and whether the interval contains 0.5.
 
 **Bias tests.** For each qubit, z = (P(1) − 0.5) / √(0.25 / shots); qubits with |z| > 3 are listed. A chi-square test (shots·Σ(p̂ⱼ − p̄)² / (p̄(1 − p̄)), N − 1 degrees of freedom) asks whether per-qubit P(1) values spread more than shot noise predicts. The overall mean P(1) is tested against 0.5 both as a pooled binomial z (which assumes all qubits share one P(1)) and as a one-sample t-test across the per-qubit values (which does not). **Flagged qubits are reported, never dropped or filtered.**
 

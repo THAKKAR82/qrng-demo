@@ -5,7 +5,7 @@
   "description": "Written by `python -m pipeline.tasks export`. Documented in SCHEMA.md. Every object is closed (additionalProperties: false) so nothing unexpected, such as credentials or paths, can slip in.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generated_utc", "metadata", "quantum", "classical"],
+  "required": ["schema_version", "generated_utc", "metadata", "quantum", "classical", "cross_checks"],
   "properties": {
     "schema_version": { "const": 1 },
     "generated_utc": { "$ref": "#/$defs/utc" },
@@ -185,10 +185,41 @@
         "next_bits": { "$ref": "#/$defs/next_bits" },
         "attacker": { "$ref": "#/$defs/attacker" }
       }
+    },
+    "cross_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mt_on_quantum", "bias_on_classical"],
+      "properties": {
+        "mt_on_quantum": { "$ref": "#/$defs/cross_check" },
+        "bias_on_classical": { "$ref": "#/$defs/cross_check" }
+      }
     }
   },
   "$defs": {
     "utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+    "cross_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "accuracy",
+        "ci_low",
+        "ci_high",
+        "n_predicted",
+        "min_entropy",
+        "consistent_with_half"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "accuracy": { "$ref": "#/$defs/probability" },
+        "ci_low": { "$ref": "#/$defs/probability" },
+        "ci_high": { "$ref": "#/$defs/probability" },
+        "n_predicted": { "type": "integer", "minimum": 1 },
+        "min_entropy": { "$ref": "#/$defs/bits" },
+        "consistent_with_half": { "type": "boolean" }
+      }
+    },
     "probability": { "type": "number", "minimum": 0, "maximum": 1 },
     "bits": { "type": "number", "minimum": 0, "maximum": 1 },
     "bit": { "enum": [0, 1] },

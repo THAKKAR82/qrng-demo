@@ -30,6 +30,7 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `metadata` | object | Where the data came from (below). |
 | `quantum` | object | Quantum stream results (below). |
 | `classical` | object | Classical (MT19937) stream results (below). |
+| `cross_checks` | object | Each attacker run against the other stream (below). |
 
 ## `metadata`
 
@@ -103,6 +104,17 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `next_bits` | next bits | First 200 held-out bits (right after the 624 observed words). |
 | `attacker` | attacker | The Mersenne Twister state-recovery attacker. |
 
+## `cross_checks`
+
+Fairness checks (SPEC.md, Section 3.1). Both should score about 0.5, showing neither attacker was tuned to make one source look bad. For the presenter notes.
+
+| Field | Meaning |
+|---|---|
+| `mt_on_quantum` | The MT state-recovery attacker on the quantum bits, packed into 32-bit words most significant bit first, in shot-major order. |
+| `bias_on_classical` | The bias attacker on the classical bits, reshaped to the quantum `(shots, qubits)` shape and split in half by shots. |
+
+Each has `name`, `accuracy`, `ci_low`, `ci_high` (95% Wilson), `n_predicted`, `min_entropy`, and `consistent_with_half` (`true` if 0.5 lies inside the interval). With a 95% interval, a fair attacker misses 0.5 about one time in twenty, so a `false` here is not on its own evidence of a problem.
+
 ## Shared shapes
 
 **bitmap:** `size` (always 128) and `rows`, 128 strings of 128 characters each, `"0"` or `"1"`. Row `r`, character `c` is bit `128·r + c` of the stream. Draw 1 as white and 0 as black.
@@ -118,6 +130,6 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `ci_low`, `ci_high` | 95% Wilson interval for `accuracy`. |
 | `n_predicted` | Held-out bits predicted. |
 | `n_training_bits` | Bits the attacker saw first. |
-| `min_entropy` | H∞ = −log2(accuracy), capped at 1 bit. Accuracy at or below 0.5 is sampling noise and gives 1. |
-| `min_entropy_conservative` | H∞ at `ci_high`. |
+| `min_entropy` | H∞ = −log2(max(a, 1 − a)) for accuracy a. A reliably wrong attacker is as good as a reliably right one (flip every guess), so accuracy 0 and 1 both give 0 bits and 0.5 gives 1 bit. |
+| `min_entropy_conservative` | H∞ at whichever of `ci_low` and `ci_high` gives the larger max(a, 1 − a), i.e. the lower H∞. |
 | `running.n_bits`, `running.accuracy` | Accuracy over the first `n_bits[i]` predictions, for a convergence chart. At most 500 points, including the first and last prediction. |

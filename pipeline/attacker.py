@@ -18,7 +18,7 @@ import numpy as np
 import numpy.typing as npt
 
 from pipeline.analysis import min_entropy_from_accuracy, wilson_interval
-from pipeline.classical import WORD_BITS, words_to_bits
+from pipeline.classical import WORD_BITS, bits_to_words, words_to_bits
 
 MT_STATE_WORDS = 624  # MT19937 keeps 624 words of 32 bits as its whole state
 RUNNING_POINTS = 500
@@ -34,8 +34,9 @@ class AttackResult:
     n_training_bits: int  # bits the attacker observed before predicting
     ci_low: float  # 95% Wilson interval for accuracy
     ci_high: float
-    min_entropy: float  # H∞ at the point estimate, capped at 1 bit
-    min_entropy_conservative: float  # H∞ at ci_high
+    min_entropy: float  # H∞ = -log2(max(a, 1 - a)) at the point estimate
+    # H∞ at whichever CI bound gives the larger max(a, 1 - a), i.e. the lower H∞
+    min_entropy_conservative: float
     # Accuracy over the first running_index[i] predicted bits, downsampled.
     running_index: npt.NDArray[np.int64]
     running_accuracy: npt.NDArray[np.float64]
@@ -83,7 +84,10 @@ def _score(
         ci_low=ci_low,
         ci_high=ci_high,
         min_entropy=min_entropy_from_accuracy(accuracy),
-        min_entropy_conservative=min_entropy_from_accuracy(ci_high),
+        # max(a, 1 - a) is convex, so over the interval it peaks at one of the two bounds.
+        min_entropy_conservative=min(
+            min_entropy_from_accuracy(ci_low), min_entropy_from_accuracy(ci_high)
+        ),
         running_index=index,
         running_accuracy=running,
         predictions=predictions,
@@ -210,3 +214,28 @@ class BiasAttacker:
             n_training_bits=int(train.size),
             per_qubit_accuracy=per_qubit,
         )
+
+
+@dataclass(frozen=True)
+class CrossChecks:
+    """Each attacker run against the other stream (SPEC.md, Section 3.1). Both should score
+    about 0.5, showing neither attacker was tuned to make one source look bad."""
+
+    mt_on_quantum: AttackResult
+    bias_on_classical: AttackResult
+
+
+def cross_checks(bits_2d: npt.ArrayLike, words: npt.ArrayLike) -> CrossChecks:
+    """Run the MT attacker on the quantum bits, packed into 32-bit words MSB first in
+    shot-major order, and the bias attacker on the classical bits, reshaped to the quantum
+    array's ``(shots, qubits)`` shape."""
+    q_bits = np.asarray(bits_2d, dtype=np.uint8)
+    if q_bits.ndim != 2:
+        raise ValueError(f"expected a (shots, qubits) array, got shape {q_bits.shape}")
+    c_bits = words_to_bits(words)
+    if c_bits.size < q_bits.size:
+        raise ValueError("classical stream is shorter than the quantum stream")
+    return CrossChecks(
+        mt_on_quantum=MersenneTwisterAttacker().attack(bits_to_words(q_bits)),
+        bias_on_classical=BiasAttacker().attack(c_bits[: q_bits.size].reshape(q_bits.shape)),
+    )

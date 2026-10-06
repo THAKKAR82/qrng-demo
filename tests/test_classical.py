@@ -24,6 +24,18 @@ def test_words_unpack_msb_first() -> None:
     assert bits[32:].tolist() == [0] * 30 + [1, 0]
 
 
+def test_bits_pack_msb_first() -> None:
+    bits = [1] + [0] * 30 + [1] + [0] * 30 + [1, 0]
+    words = classical.bits_to_words(np.array(bits, dtype=np.uint8))
+    assert words.dtype == np.uint32
+    assert words.tolist() == [0x80000001, 0x00000002]
+
+
+def test_bits_to_words_drops_a_partial_last_word() -> None:
+    bits = np.ones(70, dtype=np.uint8)
+    assert classical.bits_to_words(bits).tolist() == [0xFFFFFFFF, 0xFFFFFFFF]
+
+
 def test_words_to_bits_matches_spec_formula() -> None:
     words = classical.generate_words(4)
     expected = [(int(w) >> (31 - i)) & 1 for w in words for i in range(32)]
