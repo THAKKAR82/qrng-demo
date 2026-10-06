@@ -1,6 +1,8 @@
 # Runtime dependencies, exact pins. Install with: pip install -r requirements.txt
 # Keep in sync with [project].dependencies in pyproject.toml.
 numpy==2.5.3
+scipy==1.18.1
+jsonschema==4.26.0
 matplotlib==3.11.2
 qiskit==2.5.2
 qiskit-ibm-runtime==0.50.0

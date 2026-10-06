@@ -57,7 +57,7 @@ These rules apply to all code, copy, charts, notebook text, and presenter notes.
 
 1. **Never present simulator or synthetic output as quantum hardware output.** Synthetic data must be labelled synthetic everywhere it appears: file metadata, notebook output, every chart title, and a persistent on-screen banner in the UI.
 2. **Never claim quantum bits have higher Shannon entropy.** They don't; with readout bias, their Shannon entropy is usually slightly *lower*. The claim is about predictability only.
-3. **Every on-screen number and every comparative phrase comes from the data**, never from assumptions. Copy is written as templates filled from `results.json`. Words such as "much more" or "slightly" are chosen by rules in the analysis code, applied to measured values.
+3. **Every on-screen number and every comparative phrase comes from the data**, never from assumptions. Copy is written as templates filled from `results.json` (or `demo.json`, which the same analysis code produces). Words such as "much more" or "slightly" are chosen by rules in the analysis code, applied to measured values.
 4. **The attacker never sees the classical seed**, only the outputs. The seed is never stored, logged, or returned.
 5. **If qubits are selected by readout error, say so on screen**, along with how many candidates they were picked from.
 6. **Hardware bias, if visible, is explained, never hidden or post-processed away.** No readout-error mitigation, no measurement twirling, no randomness extraction, and no debiasing is applied to the bits we report. The UI explains bias in plain language (the detector reads 0 slightly more easily than 1).
@@ -92,7 +92,7 @@ Each real collection run is a committed folder `data/runs/<run_id>/`, where `run
 | `quantum.json` | Everything needed to interpret the quantum bits (below). |
 | `classical.npz` | `words`: `uint32`, shape `(n_words,)`, in generation order. |
 | `classical.json` | Everything needed to interpret the classical words (below). |
-| `results.json` | Output of `analyze` (Section 7). The UI reads only this file. |
+| `results.json` | Output of `analyze` (Section 7). |
 
 Neither JSON file ever contains any key, token, CRN, or instance name. Run folders are committed, so the collector warns if a folder exceeds 10 MB.
 
@@ -182,6 +182,16 @@ The Sampler runs locally on Qiskit Aer (a dev dependency). With a fake backend a
 - Cross-check results (Section 3.1)
 - `copy`: comparative phrases chosen by documented rules from the measured values, used verbatim by the UI
 
+### 7.1 Export for the UI (`export`)
+
+`export [--run <run_id> | --sample <name>]` writes `ui/src/data/demo.json`, the only data file the UI imports. By default it uses the latest complete folder in `data/runs/` (run ids start with a UTC timestamp, so the greatest name is the newest); if there is none, it uses `data/sample/synthetic-v1/`. It computes everything with the same `pipeline.analysis` and `pipeline.attacker` functions as `analyze`.
+
+`demo.json` holds: metadata for both sources (backend, job ID, date, qubit count, whether qubits were selected by readout error and from how many candidates, the run folder name, and `synthetic` and `sample` flags); Shannon entropy for each stream (per qubit, mean, and pooled for quantum); per-qubit P(1), readout error, z-score against 0.5, and bias-attacker accuracy; bias summary statistics (mean P(1), mean and worst-case |P(1) − 0.5|); the bias tests below; a 128×128 bitmap of the first 16,384 bits of each stream; the first 200 held-out bits of each stream with the attacker's prediction for each (for an audience guessing game); and both attackers' accuracy, 95% Wilson interval, H∞ at the point estimate and at the upper bound, and running accuracy downsampled to at most 500 points.
+
+**Bias tests.** For each qubit, z = (P(1) − 0.5) / √(0.25 / shots); qubits with |z| > 3 are listed. A chi-square test (shots·Σ(p̂ⱼ − p̄)² / (p̄(1 − p̄)), N − 1 degrees of freedom) asks whether per-qubit P(1) values spread more than shot noise predicts. The overall mean P(1) is tested against 0.5 both as a pooled binomial z (which assumes all qubits share one P(1)) and as a one-sample t-test across the per-qubit values (which does not). **Flagged qubits are reported, never dropped or filtered.**
+
+The schema is `ui/src/data/demo.schema.json`, documented in `ui/src/data/SCHEMA.md`. Every object in it is closed. Fields are copied from run metadata by an explicit allow-list. Before writing, `export` validates against the schema, refuses output that contains anything secret-like (`crn:`, the account name, `.qiskit`, long token-like strings, or local file paths), and refuses output of 1 MB or more.
+
 ## 8. Notebook
 
 There is one notebook, `notebooks/qrng_analysis.ipynb`. It runs the analysis end to end by calling `pipeline` functions:
@@ -197,7 +207,7 @@ The notebook is committed with outputs cleared. Tests execute it against the syn
 
 ## 9. Presentation UI
 
-`ui/` is a Vite + React + TypeScript app. At build time it imports `results.json` from one run, so the built page needs no network and no server. `vite-plugin-singlefile` inlines everything into one HTML file, which the `build-demo` task copies to `demo/index.html` (committed).
+`ui/` is a Vite + React + TypeScript app. At build time it imports `ui/src/data/demo.json` (Section 7.1), exported from one run, so the built page needs no network and no server. `vite-plugin-singlefile` inlines everything into one HTML file, which the `build-demo` task copies to `demo/index.html` (committed).
 
 The screens, in order:
 
@@ -207,7 +217,7 @@ The screens, in order:
 4. **The result:** H∞ for both streams, with confidence intervals.
 5. **Why quantum isn't 50/50:** readout bias, explained plainly, with the per-qubit chart.
 
-Presenter notes, including the `os.urandom` point and the cross-checks, are in a panel toggled with the N key and hidden by default. If `results.json` says `synthetic: true`, a banner reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen and can't be dismissed.
+Presenter notes, including the `os.urandom` point and the cross-checks, are in a panel toggled with the N key and hidden by default. If `demo.json` says `synthetic: true`, a banner reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen and can't be dismissed.
 
 ## 10. Tasks
 
@@ -222,13 +232,14 @@ Everything runs through `python -m pipeline.tasks <task>`.
 | `collect-quantum --from-job <id>` | Writes the run folder for an already-submitted job; submits nothing (Section 6.3). | **Human only** |
 | `collect-quantum --dry-run` | Runs the real Sampler locally on Aer with a fake backend; writes nothing to `data/runs/`. | Anyone |
 | `analyze --run <id>` / `--sample <name>` | Writes `results.json`. | Anyone |
+| `export [--run <id> \| --sample <name>]` | Writes `ui/src/data/demo.json` (Section 7.1). | Anyone |
 | `notebook` | Executes the notebook into `data/scratch/`. | Anyone |
 | `ui-dev` | Starts the Vite dev server. | Anyone |
 | `build-demo --run <id>` | Builds the UI from one run and copies it to `demo/index.html`. | Anyone |
 | `check` | Runs ruff, mypy, pytest, and the UI lint and type check. | Anyone |
 | `refresh` | Runs `collect-quantum`, `analyze`, and `build-demo` in one go. | **Human only** |
 
-`setup-check`, `make-sample`, `collect-classical`, and `collect-quantum` exist so far. The others are added in later tasks.
+`setup-check`, `make-sample`, `collect-classical`, `collect-quantum`, and `export` exist so far. The others are added in later tasks.
 
 ## 11. Engineering conventions
 

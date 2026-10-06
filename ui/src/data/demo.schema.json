@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qrng-demo/demo.schema.json",
+  "title": "QRNG demo data (demo.json)",
+  "description": "Written by `python -m pipeline.tasks export`. Documented in SCHEMA.md. Every object is closed (additionalProperties: false) so nothing unexpected, such as credentials or paths, can slip in.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_utc", "metadata", "quantum", "classical"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_utc": { "$ref": "#/$defs/utc" },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_folder",
+        "synthetic",
+        "sample",
+        "source",
+        "backend",
+        "backend_num_qubits",
+        "job_id",
+        "date_utc",
+        "shots",
+        "n_qubits",
+        "qubits_selected_by_readout_error",
+        "qubit_selection_method",
+        "qubit_selection_candidates",
+        "classical_generator",
+        "classical_synthetic"
+      ],
+      "properties": {
+        "run_folder": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.\\-]*$" },
+        "synthetic": { "type": "boolean" },
+        "sample": { "type": "boolean" },
+        "source": { "enum": ["ibm_quantum_hardware", "synthetic"] },
+        "backend": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_\\-]+$" },
+        "backend_num_qubits": { "type": ["integer", "null"], "minimum": 1 },
+        "job_id": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9\\-]{1,64}$" },
+        "date_utc": { "anyOf": [{ "$ref": "#/$defs/utc" }, { "type": "null" }] },
+        "shots": { "type": "integer", "minimum": 2 },
+        "n_qubits": { "type": "integer", "minimum": 1 },
+        "qubits_selected_by_readout_error": { "type": "boolean" },
+        "qubit_selection_method": { "type": ["string", "null"] },
+        "qubit_selection_candidates": { "type": ["integer", "null"], "minimum": 1 },
+        "classical_generator": { "type": "string" },
+        "classical_synthetic": { "type": "boolean" }
+      }
+    },
+    "quantum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n_bits",
+        "fraction_ones",
+        "shannon_entropy",
+        "bias_summary",
+        "bias_tests",
+        "qubits",
+        "bitmap",
+        "next_bits",
+        "attacker"
+      ],
+      "properties": {
+        "n_bits": { "type": "integer", "minimum": 1 },
+        "fraction_ones": { "$ref": "#/$defs/probability" },
+        "shannon_entropy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pooled", "per_qubit_mean", "per_qubit_min"],
+          "properties": {
+            "pooled": { "$ref": "#/$defs/bits" },
+            "per_qubit_mean": { "$ref": "#/$defs/bits" },
+            "per_qubit_min": { "$ref": "#/$defs/bits" }
+          }
+        },
+        "bias_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mean_p_one", "mean_abs_bias", "worst"],
+          "properties": {
+            "mean_p_one": { "$ref": "#/$defs/probability" },
+            "mean_abs_bias": { "type": "number", "minimum": 0, "maximum": 0.5 },
+            "worst": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["column", "physical_qubit", "p_one", "abs_bias"],
+              "properties": {
+                "column": { "type": "integer", "minimum": 0 },
+                "physical_qubit": { "type": ["integer", "null"], "minimum": 0 },
+                "p_one": { "$ref": "#/$defs/probability" },
+                "abs_bias": { "type": "number", "minimum": 0, "maximum": 0.5 }
+              }
+            }
+          }
+        },
+        "bias_tests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "z_threshold",
+            "flagged_columns",
+            "flagged_physical_qubits",
+            "chi_square",
+            "chi_square_dof",
+            "chi_square_p",
+            "mean_p_one",
+            "mean_z",
+            "mean_p",
+            "across_qubits_t",
+            "across_qubits_p"
+          ],
+          "properties": {
+            "z_threshold": { "type": "number", "exclusiveMinimum": 0 },
+            "flagged_columns": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0 },
+              "uniqueItems": true
+            },
+            "flagged_physical_qubits": {
+              "type": "array",
+              "items": { "type": ["integer", "null"], "minimum": 0 }
+            },
+            "chi_square": { "type": "number", "minimum": 0 },
+            "chi_square_dof": { "type": "integer", "minimum": 0 },
+            "chi_square_p": { "$ref": "#/$defs/probability" },
+            "mean_p_one": { "$ref": "#/$defs/probability" },
+            "mean_z": { "type": "number" },
+            "mean_p": { "$ref": "#/$defs/probability" },
+            "across_qubits_t": { "type": ["number", "null"] },
+            "across_qubits_p": {
+              "anyOf": [{ "$ref": "#/$defs/probability" }, { "type": "null" }]
+            }
+          }
+        },
+        "qubits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "column",
+              "physical_qubit",
+              "readout_error",
+              "p_one",
+              "z",
+              "flagged",
+              "shannon_entropy",
+              "attacker_accuracy"
+            ],
+            "properties": {
+              "column": { "type": "integer", "minimum": 0 },
+              "physical_qubit": { "type": ["integer", "null"], "minimum": 0 },
+              "readout_error": {
+                "anyOf": [{ "$ref": "#/$defs/probability" }, { "type": "null" }]
+              },
+              "p_one": { "$ref": "#/$defs/probability" },
+              "z": { "type": "number" },
+              "flagged": { "type": "boolean" },
+              "shannon_entropy": { "$ref": "#/$defs/bits" },
+              "attacker_accuracy": { "$ref": "#/$defs/probability" }
+            }
+          }
+        },
+        "bitmap": { "$ref": "#/$defs/bitmap" },
+        "next_bits": { "$ref": "#/$defs/next_bits" },
+        "attacker": { "$ref": "#/$defs/attacker" }
+      }
+    },
+    "classical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_bits", "fraction_ones", "shannon_entropy", "bitmap", "next_bits", "attacker"],
+      "properties": {
+        "n_bits": { "type": "integer", "minimum": 1 },
+        "fraction_ones": { "$ref": "#/$defs/probability" },
+        "shannon_entropy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pooled"],
+          "properties": { "pooled": { "$ref": "#/$defs/bits" } }
+        },
+        "bitmap": { "$ref": "#/$defs/bitmap" },
+        "next_bits": { "$ref": "#/$defs/next_bits" },
+        "attacker": { "$ref": "#/$defs/attacker" }
+      }
+    }
+  },
+  "$defs": {
+    "utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+    "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+    "bits": { "type": "number", "minimum": 0, "maximum": 1 },
+    "bit": { "enum": [0, 1] },
+    "bitmap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size", "rows"],
+      "properties": {
+        "size": { "const": 128 },
+        "rows": {
+          "type": "array",
+          "minItems": 128,
+          "maxItems": 128,
+          "items": { "type": "string", "pattern": "^[01]{128}$" }
+        }
+      }
+    },
+    "next_bits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_bit", "bits", "attacker_predictions"],
+      "properties": {
+        "start_bit": { "type": "integer", "minimum": 0 },
+        "bits": {
+          "type": "array",
+          "minItems": 200,
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/bit" }
+        },
+        "attacker_predictions": {
+          "type": "array",
+          "minItems": 200,
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/bit" }
+        }
+      }
+    },
+    "attacker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "accuracy",
+        "ci_low",
+        "ci_high",
+        "n_predicted",
+        "n_training_bits",
+        "min_entropy",
+        "min_entropy_conservative",
+        "running"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "accuracy": { "$ref": "#/$defs/probability" },
+        "ci_low": { "$ref": "#/$defs/probability" },
+        "ci_high": { "$ref": "#/$defs/probability" },
+        "n_predicted": { "type": "integer", "minimum": 1 },
+        "n_training_bits": { "type": "integer", "minimum": 1 },
+        "min_entropy": { "$ref": "#/$defs/bits" },
+        "min_entropy_conservative": { "$ref": "#/$defs/bits" },
+        "running": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["n_bits", "accuracy"],
+          "properties": {
+            "n_bits": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 500,
+              "items": { "type": "integer", "minimum": 1 }
+            },
+            "accuracy": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 500,
+              "items": { "$ref": "#/$defs/probability" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

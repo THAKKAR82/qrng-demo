@@ -46,7 +46,13 @@ def test_unknown_task_is_rejected() -> None:
 
 
 def test_registered_tasks_and_human_only() -> None:
-    assert set(TASKS) == {"setup-check", "make-sample", "collect-classical", "collect-quantum"}
+    assert set(TASKS) == {
+        "setup-check",
+        "make-sample",
+        "collect-classical",
+        "collect-quantum",
+        "export",
+    }
     assert {name for name, task in TASKS.items() if task.human_only} == {"collect-quantum"}
 
 

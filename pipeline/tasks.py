@@ -253,6 +253,28 @@ def collect_quantum(args: argparse.Namespace) -> int:
     return quantum.run_task(cfg)
 
 
+def _configure_export(parser: argparse.ArgumentParser) -> None:
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--run", help="run folder under data/runs/ (default: the latest)")
+    source.add_argument("--sample", help="folder under data/sample/ (used when no run exists)")
+
+
+def export(args: argparse.Namespace) -> int:
+    from pipeline import export as exporter
+
+    try:
+        folder, is_sample = exporter.resolve_source(run=args.run, sample=args.sample)
+        demo = exporter.write_demo(folder, is_sample=is_sample)
+    except ValueError as exc:
+        print(exc)
+        return 1
+    label = "SYNTHETIC sample" if demo["metadata"]["synthetic"] else "real run"
+    target = exporter.DEMO_JSON
+    shown = target.relative_to(REPO_ROOT) if target.is_relative_to(REPO_ROOT) else target
+    print(f"Exported {label} {folder.name} to {shown}.")
+    return 0
+
+
 TASKS: dict[str, Task] = {
     task.name: task
     for task in (
@@ -279,6 +301,12 @@ TASKS: dict[str, Task] = {
             collect_quantum,
             _configure_collect_quantum,
             human_only=True,
+        ),
+        Task(
+            "export",
+            "Write ui/src/data/demo.json from the latest run (or the sample) (offline).",
+            export,
+            _configure_export,
         ),
     )
 }
