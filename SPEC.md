@@ -9,7 +9,7 @@ This is a short live demo for a mixed audience of technical and non-technical pe
 1. **Quantum computers are real and usable today.** We run a small job on a real IBM Quantum processor and show the real job: backend name, job ID, timestamp, and the physical qubits used.
 2. **Quantum random bits are unpredictable in a way that an ordinary classical random number generator is not.** We prove this by attacking both and measuring how well the attacker does.
 
-The demo has three parts: a Python pipeline that collects and analyses data, a Jupyter notebook that walks through the analysis end to end, and a presentation web app that shows the results. The web app is built into a single HTML file that runs offline on stage.
+The demo has three parts: a Python pipeline that collects and analyses data, a Jupyter notebook that walks through the analysis end to end, and a web app that shows the results. The web app is a hybrid of a presentation and an app: the presenter drives a slide deck on a projector, some slides contain interactive panels, and audience members can optionally explore the same app on their own phones (Section 9).
 
 ## 2. The core claim
 
@@ -208,9 +208,39 @@ Charts use one shared matplotlib style, `pipeline/plotstyle.py`: classical is al
 
 The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook enforces this). Tests execute it against the synthetic sample (with `nbclient`, through the `notebook` task) so it can't silently break.
 
-## 9. Presentation UI
+## 9. Web app: presentation and audience
 
-`ui/` is a Vite + React + TypeScript app. At build time it imports `ui/src/data/demo.json` (Section 7.1), exported from one run, so the built page needs no network and no server. `vite-plugin-singlefile` inlines everything into one HTML file, which the `build-demo` task copies to `demo/index.html` (committed).
+`ui/` is a Vite + React + TypeScript app with no UI component library; charts are hand-written SVG and canvas. At build time it imports `ui/src/data/demo.json` (Section 7.1), exported from one run, so the presenter view needs no network and no server.
+
+### 9.1 A hybrid of a presentation and an app
+
+- **Presenter view** (the default). A slide deck shown on a projector: full-screen scenes on a fixed 16:9 stage, designed for 1920×1080 and identical in proportion at 1280×720. Navigation with the arrow keys and a presentation clicker (PageUp/PageDown, Space), a subtle progress indicator, presenter notes toggled with N (hidden by default), and fullscreen with F. Some scenes contain interactive **panels** (Section 9.3).
+- **Audience view**, selected with the query parameter `?view=audience`. A phone-first page designed for portrait phones (390×844) in **explore mode**: people browse the same data and panels freely, at their own pace, during or after the talk.
+
+**Audience participation is in person.** People raise hands and call out guesses, and the presenter presses keys to reveal answers and results on the projector. There is no room, no real-time sync between devices, no audience vote counting, and no backend of any kind.
+
+**Phones use a separate static copy.** A QR code on screen points to a static hosted copy of the same build (opened with `?view=audience`). That copy is not connected to the presenter's app: it never follows the presenter's slide, sends nothing, and receives nothing. The UI never implies that phones are connected to the talk.
+
+### 9.2 Running it
+
+| Command | What it is |
+|---|---|
+| `npm run dev` | Local dev server for working on the UI. |
+| `npm run preview` | Builds the production app into `ui/dist/` and serves it locally. **The primary way to present.** |
+| `npm run build:demo` | Fallback: one self-contained `index.html` with all JS, CSS, fonts, and data inlined, written to the repo-level `demo/index.html` (committed). It opens by double-clicking, under `file://`, with the network off. |
+
+The tasks `ui-dev` and `ui-build` (Section 10) run the first and third. Builds use relative URLs, so the static copy for phones is either build (`ui/dist/` or `demo/index.html`) placed on any static host; no server code is involved. The primitives page, which shows every reusable primitive rendered with real data from `demo.json`, opens with `#primitives` or `?primitives` (both work under `file://`) or the P key.
+
+### 9.3 Design rules
+
+- **Tokens.** Colours, type, spacing, layout, and motion are CSS variables in one file, `ui/src/styles/tokens.css`. IBM Plex Sans for text and IBM Plex Mono for numbers and bits, self-hosted (no CDN), including the subsets needed for symbols such as ∞, ≈, ×, ±, →, and ₂. On the stage, body text is at least 24px at 1920×1080 and headline numbers at least 96px.
+- **Colour.** An off-white background, near-black text, and one muted grey for secondary text. Exactly two semantic colours, classical (orange) and quantum (blue), with the same hues as `pipeline/plotstyle.py`. The exact hues are used for chart marks; darker versions of the same hues, meeting WCAG AA on the background, are used for text and big numbers. No gradients, glassmorphism, decorative shadows, emoji, or stock icons.
+- **Motion.** Short transitions only (200–400 ms, ease-out), used to reveal results. `prefers-reduced-motion` turns them off.
+- **Panels.** An interactive section is a `Panel`: it sits inside a scene in the presenter view, or stands alone in the audience view's explore mode. Every control in a panel is at least 44 CSS px in both dimensions, and nothing depends on hover.
+- **Keys.** The deck's key handler ignores key events aimed at interactive elements (buttons, inputs, and anything with an interactive role), so Space or a digit pressed in a panel never also moves the deck.
+- **Responsive.** The presenter view is checked at 1920×1080 and 1280×720; the audience view at 390×844.
+
+### 9.4 The presentation scenes
 
 The screens, in order:
 
@@ -220,7 +250,7 @@ The screens, in order:
 4. **The result:** H∞ for both streams, with confidence intervals.
 5. **Why quantum isn't 50/50:** readout bias, explained plainly, with the per-qubit chart.
 
-Presenter notes, including the `os.urandom` point and the cross-checks, are in a panel toggled with the N key and hidden by default. If `demo.json` says `synthetic: true`, a banner reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen and can't be dismissed.
+Presenter notes, including the `os.urandom` point and the cross-checks, are in a panel toggled with the N key and hidden by default. If `demo.json` says `synthetic: true`, a label reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen of both views and can't be dismissed.
 
 ## 10. Tasks
 
@@ -237,18 +267,19 @@ Everything runs through `python -m pipeline.tasks <task>`.
 | `analyze --run <id>` / `--sample <name>` | Writes `results.json`. | Anyone |
 | `export [--run <id> \| --sample <name>]` | Writes `ui/src/data/demo.json` (Section 7.1). | Anyone |
 | `notebook [--run <id> \| --sample <name>]` | Executes the notebook into `data/scratch/`. | Anyone |
-| `ui-dev` | Starts the Vite dev server. | Anyone |
-| `build-demo --run <id>` | Builds the UI from one run and copies it to `demo/index.html`. | Anyone |
+| `ui-dev` | Starts the Vite dev server (`npm run dev`). | Anyone |
+| `ui-build` | Builds the single-file fallback `demo/index.html` from the current `demo.json` (`npm run build:demo`). | Anyone |
+| `build-demo --run <id>` | Exports one run (`export --run`) and then runs `ui-build`. | Anyone |
 | `check` | Runs ruff, mypy, pytest, and the UI lint and type check. | Anyone |
 | `refresh` | Runs `collect-quantum`, `analyze`, and `build-demo` in one go. | **Human only** |
 
-`setup-check`, `make-sample`, `collect-classical`, `collect-quantum`, `export`, and `notebook` exist so far. The others are added in later tasks.
+`setup-check`, `make-sample`, `collect-classical`, `collect-quantum`, `export`, `notebook`, `ui-dev`, and `ui-build` exist so far. The others are added in later tasks.
 
 ## 11. Engineering conventions
 
 - **Platforms:** both machines are macOS, and the workflow must behave identically on both. Use `pathlib` for all paths and resolve them from the repo root (`pipeline/paths.py`), never from the current directory.
 - **Python:** 3.11 or newer. Use a plain `python -m venv .venv` and `pip`. Exact pins are in `requirements.txt` (runtime) and `requirements-dev.txt` (tools, plus the package in editable mode); `pyproject.toml` holds compatible ranges and tool configuration.
-- **Node:** version 20.19 or newer (or 22.12 or newer). UI dependencies are pinned exactly in `ui/package.json`, with `ui/package-lock.json` committed. Install with `npm ci`.
+- **Node:** both machines use the version in `.nvmrc` (26.3.0); `ui/package.json` requires 24 or newer. UI dependencies are pinned exactly in `ui/package.json`, with `ui/package-lock.json` committed. Install with `npm ci`. Playwright is a dev dependency used only by `ui/scripts/verify.mjs` for visual and offline checks; no run mode or task needs it.
 - **Quality checks:** ruff for linting and formatting, mypy in strict mode, and pytest. Pre-commit runs detect-secrets, ruff, mypy, and basic hygiene hooks.
 - **Tests never touch IBM Quantum.** Collector tests use a mocked `QiskitRuntimeService`; the Sampler is either mocked or the real client-side Sampler running locally on Aer (`qiskit-aer`, a dev dependency). They must cover refusal on a non-Open-Plan instance, refusal on low remaining allowance, the bit-order conversion, and that no CRN or token appears in output.
 - **Version control:** run folders, sample data, the notebook (outputs cleared), and `demo/index.html` are committed. `data/scratch/`, `scratch/`, `.env*`, and virtualenvs are not.

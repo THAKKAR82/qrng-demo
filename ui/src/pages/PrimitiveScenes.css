@@ -1,0 +1,149 @@
+/* Layout of the primitives page on the 12-column grid. Classical is always on the left. */
+
+.primitives__half--0 {
+  grid-column: 1 / span 6;
+}
+
+.primitives__half--1 {
+  grid-column: 7 / span 6;
+}
+
+.primitives__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.primitives__caption {
+  font-size: var(--text-lead);
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+}
+
+.primitives__bitmap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.primitives__bitmap--0 {
+  grid-column: 1 / span 4;
+}
+
+.primitives__bitmap--1 {
+  grid-column: 5 / span 4;
+}
+
+.primitives__gauges {
+  grid-column: 1 / span 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding-top: var(--space-4);
+}
+
+.primitives__chart-wide {
+  grid-column: 1 / span 7;
+}
+
+.primitives__chart-narrow {
+  grid-column: 8 / span 5;
+}
+
+.primitives__panel-left {
+  --panel-bitmap-max: calc(360 * var(--px));
+
+  grid-column: 1 / span 4;
+}
+
+.primitives__panel-right {
+  grid-column: 6 / span 7;
+}
+
+/* ---- Tokens scene ---------------------------------------------------------- */
+
+.tokens__scale {
+  grid-column: 1 / span 6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.tokens__row {
+  display: grid;
+  grid-template-columns: calc(144 * var(--px)) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: var(--space-3);
+}
+
+.tokens__tag {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.tokens__sample {
+  overflow: hidden;
+  line-height: 1.15;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tokens__side {
+  grid-column: 8 / span 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.tokens__colours {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.tokens__colour {
+  display: grid;
+  grid-template-columns: calc(96 * var(--px)) minmax(0, 1fr);
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: center;
+}
+
+.tokens__swatch {
+  grid-row: span 2;
+  align-self: stretch;
+}
+
+.tokens__swatch--classical {
+  background: var(--color-classical-mark);
+}
+
+.tokens__swatch--quantum {
+  background: var(--color-quantum-mark);
+}
+
+.tokens__colour-name {
+  font-size: var(--text-h3);
+  font-weight: var(--weight-semibold);
+  line-height: 1.1;
+}
+
+.tokens__colour-role {
+  font-size: var(--text-body);
+  color: var(--color-muted);
+}
+
+.tokens__glyphs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: var(--line-hair) solid var(--color-rule);
+  font-size: var(--text-body);
+}
+
+.tokens__glyph-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}

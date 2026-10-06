@@ -1,0 +1,6 @@
+.bitmap {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  outline: var(--line-hair) solid var(--color-rule);
+}

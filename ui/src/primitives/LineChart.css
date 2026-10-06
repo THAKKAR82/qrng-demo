@@ -1,0 +1,101 @@
+.line-chart {
+  min-width: 0;
+}
+
+.line-chart__svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: var(--font-sans);
+  /* SVG text is in stage pixels: the viewBox is the chart's size on the stage. */
+  font-size: 24px;
+}
+
+.line-chart__grid line {
+  stroke: var(--color-rule);
+  stroke-width: 2;
+}
+
+.line-chart__grid text {
+  fill: var(--color-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.line-chart__grid .line-chart__axis {
+  stroke: var(--color-muted);
+}
+
+.line-chart__axis-label {
+  fill: var(--color-muted);
+}
+
+.line-chart__line {
+  fill: none;
+  stroke-width: 6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  animation: line-draw var(--duration-slow) var(--ease-out) both;
+  animation-delay: calc(var(--reveal-delay, 0ms) + 120ms);
+}
+
+.line-chart__line--classical {
+  stroke: var(--color-classical-mark);
+}
+
+.line-chart__line--quantum {
+  stroke: var(--color-quantum-mark);
+}
+
+.line-chart__band--classical {
+  fill: var(--color-classical-mark);
+  fill-opacity: 0.22;
+}
+
+.line-chart__band--quantum {
+  fill: var(--color-quantum-mark);
+  fill-opacity: 0.22;
+}
+
+.line-chart__reference {
+  stroke: var(--color-reference);
+  stroke-width: 3;
+  stroke-dasharray: 10 10;
+}
+
+.line-chart__reference-label {
+  fill: var(--color-muted);
+}
+
+.line-chart__end-label,
+.line-chart__band-label {
+  font-weight: var(--weight-medium);
+}
+
+.line-chart__end-label.is-classical,
+.line-chart__band-label.is-classical {
+  fill: var(--color-classical-text);
+}
+
+.line-chart__end-label.is-quantum,
+.line-chart__band-label.is-quantum {
+  fill: var(--color-quantum-text);
+}
+
+@keyframes line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line-chart__line {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}

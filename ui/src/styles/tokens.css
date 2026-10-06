@@ -1,0 +1,165 @@
+/*
+ * Design tokens. The only place colours, type, spacing, layout and motion are defined.
+ *
+ * Two views share these tokens (SPEC.md, Section 9.1), selected by data-view on <html>:
+ *
+ * - Presenter (the default): everything is measured in stage pixels. The deck is
+ *   designed on a 1920×1080 stage, and one stage pixel (--px) scales with the window
+ *   so that 1280×720 (or any 16:9 size) shows exactly the same composition.
+ * - Audience: a phone-first page in ordinary CSS pixels. The block at the end of this
+ *   file redefines the type, space and layout tokens for it, so every component that
+ *   uses tokens works in both views unchanged.
+ */
+
+:root {
+  /* One stage pixel. 1920 / 1080 stage → 1vw = 19.2px, 1vh = 10.8px. */
+  --px: min(100vw / 1920, 100vh / 1080);
+
+  /* ---- Colour ------------------------------------------------------------ */
+  /* Neutrals match pipeline/plotstyle.py (SURFACE, INK, MUTED, GRID, REFERENCE). */
+  --color-surface: #fcfcfb;
+  --color-ink: #0b0b0b;
+  --color-muted: #52514e; /* 7.7:1 on surface */
+  --color-rule: #e4e3df; /* hairlines and gridlines only, never text */
+  --color-reference: #8a8984; /* reference marks such as "a coin flip, 0.5"; never text */
+
+  /*
+   * The two semantic colours. *-mark is the exact plotstyle hue, used only for
+   * chart marks (lines, fills, bitmap pixels): 3.1:1 and 4.3:1 on the surface,
+   * which passes WCAG AA for graphics. *-text is the same hue darkened to pass AA
+   * for text of any size (5.4:1 and 5.6:1); every number and label uses it.
+   */
+  --color-classical-mark: #eb6834;
+  --color-classical-text: #b74112;
+  --color-quantum-mark: #2a78d6;
+  --color-quantum-text: #2366b6;
+
+  /* Reserved for the synthetic-data label (plotstyle FLAG, darkened to 6.4:1). */
+  --color-flag: #b61d1c;
+
+  /* ---- Type -------------------------------------------------------------- */
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Modular scale, ratio 4:3 (a perfect fourth), from a 24px body. */
+  --text-xs: calc(18 * var(--px)); /* presenter chrome only: progress counter, spec tags */
+  --text-body: calc(24 * var(--px));
+  --text-lead: calc(32 * var(--px));
+  --text-h3: calc(43 * var(--px));
+  --text-h2: calc(57 * var(--px));
+  --text-h1: calc(76 * var(--px));
+  --text-hero: calc(101 * var(--px)); /* headline numbers */
+  --text-giant: calc(180 * var(--px)); /* one number that owns the screen */
+
+  --leading-tight: 1.05;
+  --leading-heading: 1.15;
+  --leading-body: 1.45;
+  --tracking-display: -0.02em;
+  --tracking-numbers: -0.03em;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --measure: 34em; /* longest comfortable line of body text */
+
+  /* ---- Space: an 8px scale ---------------------------------------------- */
+  --space-1: calc(8 * var(--px));
+  --space-2: calc(16 * var(--px));
+  --space-3: calc(24 * var(--px));
+  --space-4: calc(32 * var(--px));
+  --space-5: calc(40 * var(--px));
+  --space-6: calc(48 * var(--px));
+  --space-8: calc(64 * var(--px));
+  --space-10: calc(80 * var(--px));
+  --space-12: calc(96 * var(--px));
+  --space-16: calc(128 * var(--px));
+
+  /* ---- Layout: a 12-column grid ----------------------------------------- */
+  --stage-width: calc(1920 * var(--px));
+  --stage-height: calc(1080 * var(--px));
+  --margin-x: var(--space-16);
+  --margin-top: var(--space-12);
+  --margin-bottom: var(--space-10);
+  --grid-columns: 12;
+  --grid-gutter: var(--space-4);
+  --content-max: calc(1664 * var(--px)); /* stage width minus both margins */
+
+  /* ---- Touch ------------------------------------------------------------- */
+  /* Smallest size of any control, in both dimensions: 44 CSS px, never less. */
+  --touch-min: max(44px, calc(64 * var(--px)));
+
+  /* ---- Lines ------------------------------------------------------------- */
+  --line-hair: max(1px, calc(2 * var(--px)));
+  --line-mark: max(3px, calc(5 * var(--px))); /* data lines: survive a washed-out projector */
+
+  /* ---- Motion: short, purposeful, ease-out ------------------------------ */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 200ms;
+  --duration-base: 320ms;
+  --duration-slow: 400ms;
+  --reveal-shift: calc(12 * var(--px));
+
+  /* ---- Layers ------------------------------------------------------------ */
+  --layer-chrome: 10;
+  --layer-notes: 20;
+  --layer-flag: 30;
+}
+
+/*
+ * Audience view: a phone in portrait first (390×844), growing a little on larger
+ * screens. Plain CSS pixels on an 8px scale; body text 18px. --px is set so that the
+ * few stage-pixel details inside components (bar heights, underlines) come out at a
+ * sensible phone size.
+ */
+:root[data-view='audience'] {
+  --px: 0.5px;
+
+  --text-xs: 14px;
+  --text-body: 18px;
+  --text-lead: 21px;
+  --text-h3: 26px;
+  --text-h2: 32px;
+  --text-h1: 40px;
+  --text-hero: 56px;
+  --text-giant: 80px;
+
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+  --space-10: 80px;
+  --space-12: 96px;
+  --space-16: 128px;
+
+  --margin-x: 16px;
+  --content-max: 640px;
+  --grid-columns: 4;
+  --grid-gutter: 16px;
+  --measure: 32em;
+
+  --touch-min: 48px;
+  --line-hair: 1px;
+  --line-mark: 3px;
+  --reveal-shift: 8px;
+}
+
+@media (min-width: 600px) {
+  :root[data-view='audience'] {
+    --margin-x: 32px;
+    --text-body: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  :root[data-view='audience'] {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+    --reveal-shift: 0px;
+  }
+}

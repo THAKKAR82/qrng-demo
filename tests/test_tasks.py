@@ -53,6 +53,8 @@ def test_registered_tasks_and_human_only() -> None:
         "notebook",
         "collect-quantum",
         "export",
+        "ui-dev",
+        "ui-build",
     }
     assert {name for name, task in TASKS.items() if task.human_only} == {"collect-quantum"}
 
@@ -131,3 +133,68 @@ def test_setup_check_touches_no_credentials(tmp_path: Path) -> None:
     assert "IMPORTED_RUNTIME=False" in result.stdout
     assert "python" in result.stdout
     assert not (tmp_path / ".qiskit").exists()
+
+
+class _NpmCalls:
+    """Records ``npm run`` calls instead of running them."""
+
+    def __init__(self, returncode: int = 0) -> None:
+        self.returncode = returncode
+        self.calls: list[tuple[list[str], Path]] = []
+
+    def __call__(
+        self, args: list[str], *, cwd: Path, check: bool
+    ) -> subprocess.CompletedProcess[str]:
+        assert check is False
+        self.calls.append((args, cwd))
+        return subprocess.CompletedProcess(args, self.returncode)
+
+
+@pytest.fixture
+def fake_ui(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, _NpmCalls]:
+    from pipeline import tasks
+
+    ui_dir = tmp_path / "ui"
+    (ui_dir / "node_modules").mkdir(parents=True)
+    demo_dir = tmp_path / "demo"
+    demo_dir.mkdir()
+    npm = _NpmCalls()
+    monkeypatch.setattr(tasks, "UI_DIR", ui_dir)
+    monkeypatch.setattr(tasks, "DEMO_DIR", demo_dir)
+    monkeypatch.setattr(tasks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr("pipeline.tasks.shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("pipeline.tasks.subprocess.run", npm)
+    return ui_dir, demo_dir, npm
+
+
+def test_ui_dev_runs_npm_dev_in_ui(fake_ui: tuple[Path, Path, _NpmCalls]) -> None:
+    ui_dir, _, npm = fake_ui
+    assert main(["ui-dev"]) == 0
+    assert npm.calls == [(["/usr/bin/npm", "run", "dev"], ui_dir)]
+
+
+def test_ui_build_runs_build_demo_and_checks_output(
+    fake_ui: tuple[Path, Path, _NpmCalls], capsys: pytest.CaptureFixture[str]
+) -> None:
+    ui_dir, demo_dir, npm = fake_ui
+    assert main(["ui-build"]) == 1  # the build "succeeded" but wrote nothing
+    assert npm.calls == [(["/usr/bin/npm", "run", "build:demo"], ui_dir)]
+    (demo_dir / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    assert main(["ui-build"]) == 0
+    assert "demo/index.html" in capsys.readouterr().out
+
+
+def test_ui_build_passes_on_npm_failure(fake_ui: tuple[Path, Path, _NpmCalls]) -> None:
+    _, _, npm = fake_ui
+    npm.returncode = 2
+    assert main(["ui-build"]) == 2
+
+
+def test_ui_tasks_need_installed_dependencies(
+    fake_ui: tuple[Path, Path, _NpmCalls], capsys: pytest.CaptureFixture[str]
+) -> None:
+    ui_dir, _, npm = fake_ui
+    (ui_dir / "node_modules").rmdir()
+    assert main(["ui-dev"]) == 1
+    assert npm.calls == []
+    assert "npm ci" in capsys.readouterr().out

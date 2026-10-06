@@ -1,0 +1,61 @@
+.bit-stream {
+  --bit-mark: var(--color-ink);
+  --bit-text: var(--color-ink);
+
+  display: grid;
+  grid-template-columns: repeat(var(--bits-per-row), 1ch);
+  column-gap: 0.32ch;
+  row-gap: var(--space-2);
+  font-size: var(--text-lead);
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+}
+
+.bit-stream--classical {
+  --bit-mark: var(--color-classical-mark);
+  --bit-text: var(--color-classical-text);
+}
+
+.bit-stream--quantum {
+  --bit-mark: var(--color-quantum-mark);
+  --bit-text: var(--color-quantum-text);
+}
+
+.bit {
+  position: relative;
+  padding-bottom: calc(10 * var(--px));
+  text-align: center;
+  animation: bit-in var(--duration-fast) var(--ease-out) both;
+  animation-delay: var(--bit-delay, 0ms);
+}
+
+.bit--hit {
+  color: var(--bit-text);
+}
+
+.bit--hit::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(5 * var(--px));
+  background: var(--bit-mark);
+}
+
+.bit--miss {
+  color: var(--color-muted);
+}
+
+@keyframes bit-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bit {
+    animation: none;
+  }
+}

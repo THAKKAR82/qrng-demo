@@ -1,0 +1,36 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-top: var(--space-3);
+  border-top: var(--line-hair) solid var(--color-ink);
+}
+
+.panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.panel__title {
+  font-size: var(--text-lead);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-heading);
+  text-wrap: balance;
+}
+
+.panel__description {
+  max-width: var(--measure);
+  color: var(--color-muted);
+  text-wrap: pretty;
+}
+
+.panel__content {
+  min-width: 0;
+}
+
+/* Standalone panels are sections of a scrolling page. */
+.panel--standalone {
+  padding-bottom: var(--space-6);
+}

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 
-from pipeline.paths import REPO_ROOT, RUNS_DIR, SAMPLE_DIR, UI_DIR
+from pipeline.paths import DEMO_DIR, REPO_ROOT, RUNS_DIR, SAMPLE_DIR, UI_DIR
 
 MIN_PYTHON = (3, 11)
 _PIN_RE = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*==\s*([^\s;#]+)")
@@ -296,6 +296,41 @@ def notebook(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_npm(script: str) -> int:
+    """Run ``npm run <script>`` in ui/. The UI's own commands live in ui/package.json."""
+    npm = shutil.which("npm")
+    if npm is None:
+        print("npm was not found. Install Node (see .nvmrc) and try again.")
+        return 1
+    if not (UI_DIR / "node_modules").is_dir():
+        print("UI dependencies are not installed. Run: (cd ui && npm ci)")
+        return 1
+    return subprocess.run([npm, "run", script], cwd=UI_DIR, check=False).returncode
+
+
+def ui_dev(_: argparse.Namespace) -> int:
+    """Start the Vite dev server; Ctrl-C stops it."""
+    try:
+        return _run_npm("dev")
+    except KeyboardInterrupt:
+        return 0
+
+
+def ui_build(_: argparse.Namespace) -> int:
+    """Build the single-file fallback demo/index.html from the current demo.json."""
+    code = _run_npm("build:demo")
+    if code != 0:
+        return code
+    target = DEMO_DIR / "index.html"
+    if not target.is_file():
+        print(f"The build finished but {target.relative_to(REPO_ROOT)} is missing.")
+        return 1
+    size_kib = target.stat().st_size / 1024
+    shown = target.relative_to(REPO_ROOT)
+    print(f"Wrote {shown} ({size_kib:.0f} KiB). It opens offline by double-click.")
+    return 0
+
+
 TASKS: dict[str, Task] = {
     task.name: task
     for task in (
@@ -334,6 +369,12 @@ TASKS: dict[str, Task] = {
             "Execute notebooks/qrng_demo.ipynb into data/scratch/ (offline).",
             notebook,
             _configure_notebook,
+        ),
+        Task("ui-dev", "Start the UI dev server (npm run dev).", ui_dev),
+        Task(
+            "ui-build",
+            "Build the single-file demo/index.html from ui/src/data/demo.json (offline).",
+            ui_build,
         ),
     )
 }

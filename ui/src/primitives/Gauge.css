@@ -1,0 +1,133 @@
+.gauge {
+  --gauge-mark: var(--color-ink);
+  --gauge-height: calc(40 * var(--px));
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: var(--space-2);
+}
+
+.gauge--classical {
+  --gauge-mark: var(--color-classical-mark);
+}
+
+.gauge--quantum {
+  --gauge-mark: var(--color-quantum-mark);
+}
+
+.gauge__caption {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-3);
+  align-items: baseline;
+}
+
+.gauge__detail {
+  color: var(--color-muted);
+}
+
+/* The track is the whole 0 to 1 bit scale; the value label sits above the bar's end. */
+.gauge__track {
+  position: relative;
+  height: var(--gauge-height);
+  margin-top: calc(var(--text-h3) * 1.3);
+  background: var(--color-rule);
+}
+
+/* The midpoint of the scale, 0.5 bits. */
+.gauge__track::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--line-hair);
+  margin-left: calc(var(--line-hair) / -2);
+  background: var(--color-surface);
+}
+
+.gauge__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--gauge-value) * 100%);
+  background: var(--gauge-mark);
+  transform-origin: left center;
+  animation: gauge-grow var(--duration-slow) var(--ease-out) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+.gauge__tick {
+  position: absolute;
+  top: calc(-8 * var(--px));
+  bottom: calc(-8 * var(--px));
+  left: calc(var(--gauge-conservative) * 100%);
+  width: var(--line-hair);
+  margin-left: calc(var(--line-hair) / -2);
+  background: var(--color-ink);
+}
+
+.gauge__value {
+  position: absolute;
+  bottom: 100%;
+  left: calc(var(--gauge-value) * 100%);
+  margin-bottom: var(--space-1);
+  font-size: var(--text-h3);
+  font-weight: var(--weight-medium);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-numbers);
+  white-space: nowrap;
+}
+
+.gauge__value--end {
+  translate: -100% 0;
+}
+
+.gauge__unit {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  letter-spacing: 0;
+}
+
+.gauge__scale {
+  position: relative;
+  height: calc(var(--text-body) * 2.9);
+  font-size: var(--text-body);
+  color: var(--color-muted);
+}
+
+.gauge__scale-mark {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.4;
+}
+
+.gauge__scale-mark--start {
+  left: 0;
+}
+
+.gauge__scale-mark--mid {
+  left: 50%;
+  translate: -50% 0;
+}
+
+.gauge__scale-mark--end {
+  right: 0;
+  align-items: flex-end;
+}
+
+@keyframes gauge-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gauge__bar {
+    animation: none;
+  }
+}

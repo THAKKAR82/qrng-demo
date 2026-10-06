@@ -1,0 +1,150 @@
+/* Reset, page defaults, the stage, and the 12-column grid. Values come from tokens.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  color-scheme: light;
+  background: var(--color-surface);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+  font-kerning: normal;
+  font-variant-numeric: lining-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The presenter's stage never scrolls; the audience page scrolls like any page. */
+:root[data-view='presenter'] body {
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3,
+p,
+figure,
+dl,
+dd,
+ol,
+ul {
+  margin: 0;
+}
+
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: var(--line-hair) solid var(--color-ink);
+  outline-offset: var(--space-1);
+}
+
+/* Numbers and bits are always set in Plex Mono with tabular figures. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'zero' 0;
+}
+
+/* Source colours for text. Marks use the -mark tokens directly. */
+.is-classical {
+  color: var(--color-classical-text);
+}
+
+.is-quantum {
+  color: var(--color-quantum-text);
+}
+
+.is-muted {
+  color: var(--color-muted);
+}
+
+/* Visually hidden, still read by screen readers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/*
+ * The stage: a fixed 16:9 frame, centred in the window, inside which every scene
+ * is laid out on the 12-column grid.
+ */
+.stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--color-surface);
+}
+
+.stage__frame {
+  position: relative;
+  width: var(--stage-width);
+  height: var(--stage-height);
+  overflow: hidden;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-columns), minmax(0, 1fr));
+  column-gap: var(--grid-gutter);
+  width: 100%;
+  max-width: var(--content-max);
+}
+
+/*
+ * Reveal: results arrive with a short ease-out rise. Elements opt in with
+ * .reveal and a --reveal-delay; reduced motion collapses it to an instant change.
+ */
+.reveal {
+  animation: reveal var(--duration-base) var(--ease-out) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(var(--reveal-shift));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
+}

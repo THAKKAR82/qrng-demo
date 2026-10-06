@@ -1,0 +1,13 @@
+.panel-bitmap {
+  max-width: var(--panel-bitmap-max, calc(480 * var(--px)));
+}
+
+:root[data-view='audience'] .panel-bitmap {
+  max-width: 100%;
+}
+
+.panel-gauges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}

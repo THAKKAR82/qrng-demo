@@ -1,0 +1,49 @@
+.segmented {
+  --segment-fill: var(--color-ink);
+
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: var(--line-hair) solid var(--color-ink);
+}
+
+.segmented__option {
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.segmented__option + .segmented__option {
+  border-left: var(--line-hair) solid var(--color-ink);
+}
+
+.segmented__option--classical {
+  --segment-fill: var(--color-classical-text);
+}
+
+.segmented__option--quantum {
+  --segment-fill: var(--color-quantum-text);
+}
+
+.segmented__option[aria-pressed='true'] {
+  background: var(--segment-fill);
+  color: var(--color-surface);
+}
+
+.segmented__option:focus-visible {
+  outline: var(--line-hair) solid var(--color-ink);
+  outline-offset: calc(var(--line-hair) * -4);
+}
+
+.segmented__option[aria-pressed='true']:focus-visible {
+  outline-color: var(--color-surface);
+}
