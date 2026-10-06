@@ -1,0 +1,618 @@
+{
+  "schema_version": 1,
+  "run_id": "2026-10-06T013454Z_ibm_fez",
+  "created_utc": "2026-10-06T01:35:06Z",
+  "source": "ibm_quantum_hardware",
+  "synthetic": false,
+  "recovered": false,
+  "recovery": null,
+  "backend": {
+    "name": "ibm_fez",
+    "num_qubits": 156
+  },
+  "plan": {
+    "plan": "open",
+    "pricing_type": "free",
+    "verified_by": "api"
+  },
+  "job": {
+    "job_id": "db250fu8v0ts73c2ampg",
+    "shots": 2000,
+    "submitted_utc": "2026-10-06T01:34:54Z",
+    "completed_utc": "2026-10-06T01:35:01Z",
+    "api_timestamps": {
+      "created": "2026-10-06T01:34:55.529832Z",
+      "finished": "2026-10-06T01:35:01.485683Z",
+      "running": "2026-10-06T01:34:57.372634Z"
+    },
+    "qpu_seconds": 3,
+    "estimated_qpu_seconds": 2.52
+  },
+  "qubits": [
+    {
+      "column": 0,
+      "physical_qubit": 2,
+      "readout_error": 0.00537109375
+    },
+    {
+      "column": 1,
+      "physical_qubit": 4,
+      "readout_error": 0.0030517578125
+    },
+    {
+      "column": 2,
+      "physical_qubit": 6,
+      "readout_error": 0.006591796875
+    },
+    {
+      "column": 3,
+      "physical_qubit": 8,
+      "readout_error": 0.0086669921875
+    },
+    {
+      "column": 4,
+      "physical_qubit": 9,
+      "readout_error": 0.0045166015625
+    },
+    {
+      "column": 5,
+      "physical_qubit": 10,
+      "readout_error": 0.002197265625
+    },
+    {
+      "column": 6,
+      "physical_qubit": 13,
+      "readout_error": 0.010498046875
+    },
+    {
+      "column": 7,
+      "physical_qubit": 14,
+      "readout_error": 0.002685546875
+    },
+    {
+      "column": 8,
+      "physical_qubit": 17,
+      "readout_error": 0.0126953125
+    },
+    {
+      "column": 9,
+      "physical_qubit": 18,
+      "readout_error": 0.002685546875
+    },
+    {
+      "column": 10,
+      "physical_qubit": 20,
+      "readout_error": 0.0096435546875
+    },
+    {
+      "column": 11,
+      "physical_qubit": 21,
+      "readout_error": 0.0140380859375
+    },
+    {
+      "column": 12,
+      "physical_qubit": 22,
+      "readout_error": 0.0042724609375
+    },
+    {
+      "column": 13,
+      "physical_qubit": 23,
+      "readout_error": 0.0054931640625
+    },
+    {
+      "column": 14,
+      "physical_qubit": 26,
+      "readout_error": 0.004638671875
+    },
+    {
+      "column": 15,
+      "physical_qubit": 27,
+      "readout_error": 0.01123046875
+    },
+    {
+      "column": 16,
+      "physical_qubit": 28,
+      "readout_error": 0.0067138671875
+    },
+    {
+      "column": 17,
+      "physical_qubit": 30,
+      "readout_error": 0.00634765625
+    },
+    {
+      "column": 18,
+      "physical_qubit": 31,
+      "readout_error": 0.0118408203125
+    },
+    {
+      "column": 19,
+      "physical_qubit": 34,
+      "readout_error": 0.006103515625
+    },
+    {
+      "column": 20,
+      "physical_qubit": 36,
+      "readout_error": 0.0067138671875
+    },
+    {
+      "column": 21,
+      "physical_qubit": 37,
+      "readout_error": 0.0078125
+    },
+    {
+      "column": 22,
+      "physical_qubit": 38,
+      "readout_error": 0.005615234375
+    },
+    {
+      "column": 23,
+      "physical_qubit": 39,
+      "readout_error": 0.0140380859375
+    },
+    {
+      "column": 24,
+      "physical_qubit": 40,
+      "readout_error": 0.0130615234375
+    },
+    {
+      "column": 25,
+      "physical_qubit": 42,
+      "readout_error": 0.0074462890625
+    },
+    {
+      "column": 26,
+      "physical_qubit": 44,
+      "readout_error": 0.0040283203125
+    },
+    {
+      "column": 27,
+      "physical_qubit": 46,
+      "readout_error": 0.0062255859375
+    },
+    {
+      "column": 28,
+      "physical_qubit": 48,
+      "readout_error": 0.005859375
+    },
+    {
+      "column": 29,
+      "physical_qubit": 50,
+      "readout_error": 0.0045166015625
+    },
+    {
+      "column": 30,
+      "physical_qubit": 54,
+      "readout_error": 0.0062255859375
+    },
+    {
+      "column": 31,
+      "physical_qubit": 56,
+      "readout_error": 0.008544921875
+    },
+    {
+      "column": 32,
+      "physical_qubit": 57,
+      "readout_error": 0.0081787109375
+    },
+    {
+      "column": 33,
+      "physical_qubit": 58,
+      "readout_error": 0.005126953125
+    },
+    {
+      "column": 34,
+      "physical_qubit": 59,
+      "readout_error": 0.0040283203125
+    },
+    {
+      "column": 35,
+      "physical_qubit": 64,
+      "readout_error": 0.0054931640625
+    },
+    {
+      "column": 36,
+      "physical_qubit": 66,
+      "readout_error": 0.0069580078125
+    },
+    {
+      "column": 37,
+      "physical_qubit": 68,
+      "readout_error": 0.01171875
+    },
+    {
+      "column": 38,
+      "physical_qubit": 69,
+      "readout_error": 0.00634765625
+    },
+    {
+      "column": 39,
+      "physical_qubit": 70,
+      "readout_error": 0.0050048828125
+    },
+    {
+      "column": 40,
+      "physical_qubit": 71,
+      "readout_error": 0.005615234375
+    },
+    {
+      "column": 41,
+      "physical_qubit": 74,
+      "readout_error": 0.0086669921875
+    },
+    {
+      "column": 42,
+      "physical_qubit": 75,
+      "readout_error": 0.0076904296875
+    },
+    {
+      "column": 43,
+      "physical_qubit": 77,
+      "readout_error": 0.008056640625
+    },
+    {
+      "column": 44,
+      "physical_qubit": 78,
+      "readout_error": 0.0113525390625
+    },
+    {
+      "column": 45,
+      "physical_qubit": 79,
+      "readout_error": 0.005126953125
+    },
+    {
+      "column": 46,
+      "physical_qubit": 82,
+      "readout_error": 0.0047607421875
+    },
+    {
+      "column": 47,
+      "physical_qubit": 84,
+      "readout_error": 0.0048828125
+    },
+    {
+      "column": 48,
+      "physical_qubit": 85,
+      "readout_error": 0.0096435546875
+    },
+    {
+      "column": 49,
+      "physical_qubit": 86,
+      "readout_error": 0.00390625
+    },
+    {
+      "column": 50,
+      "physical_qubit": 88,
+      "readout_error": 0.006591796875
+    },
+    {
+      "column": 51,
+      "physical_qubit": 89,
+      "readout_error": 0.0103759765625
+    },
+    {
+      "column": 52,
+      "physical_qubit": 93,
+      "readout_error": 0.011962890625
+    },
+    {
+      "column": 53,
+      "physical_qubit": 94,
+      "readout_error": 0.0047607421875
+    },
+    {
+      "column": 54,
+      "physical_qubit": 95,
+      "readout_error": 0.00634765625
+    },
+    {
+      "column": 55,
+      "physical_qubit": 96,
+      "readout_error": 0.00927734375
+    },
+    {
+      "column": 56,
+      "physical_qubit": 97,
+      "readout_error": 0.011962890625
+    },
+    {
+      "column": 57,
+      "physical_qubit": 98,
+      "readout_error": 0.005126953125
+    },
+    {
+      "column": 58,
+      "physical_qubit": 100,
+      "readout_error": 0.0118408203125
+    },
+    {
+      "column": 59,
+      "physical_qubit": 103,
+      "readout_error": 0.01025390625
+    },
+    {
+      "column": 60,
+      "physical_qubit": 104,
+      "readout_error": 0.0074462890625
+    },
+    {
+      "column": 61,
+      "physical_qubit": 106,
+      "readout_error": 0.0042724609375
+    },
+    {
+      "column": 62,
+      "physical_qubit": 107,
+      "readout_error": 0.0062255859375
+    },
+    {
+      "column": 63,
+      "physical_qubit": 108,
+      "readout_error": 0.00732421875
+    },
+    {
+      "column": 64,
+      "physical_qubit": 109,
+      "readout_error": 0.0079345703125
+    },
+    {
+      "column": 65,
+      "physical_qubit": 110,
+      "readout_error": 0.004150390625
+    },
+    {
+      "column": 66,
+      "physical_qubit": 111,
+      "readout_error": 0.007568359375
+    },
+    {
+      "column": 67,
+      "physical_qubit": 112,
+      "readout_error": 0.010009765625
+    },
+    {
+      "column": 68,
+      "physical_qubit": 114,
+      "readout_error": 0.0072021484375
+    },
+    {
+      "column": 69,
+      "physical_qubit": 115,
+      "readout_error": 0.0078125
+    },
+    {
+      "column": 70,
+      "physical_qubit": 117,
+      "readout_error": 0.01123046875
+    },
+    {
+      "column": 71,
+      "physical_qubit": 118,
+      "readout_error": 0.00634765625
+    },
+    {
+      "column": 72,
+      "physical_qubit": 120,
+      "readout_error": 0.0111083984375
+    },
+    {
+      "column": 73,
+      "physical_qubit": 122,
+      "readout_error": 0.0054931640625
+    },
+    {
+      "column": 74,
+      "physical_qubit": 123,
+      "readout_error": 0.0052490234375
+    },
+    {
+      "column": 75,
+      "physical_qubit": 124,
+      "readout_error": 0.0040283203125
+    },
+    {
+      "column": 76,
+      "physical_qubit": 127,
+      "readout_error": 0.0115966796875
+    },
+    {
+      "column": 77,
+      "physical_qubit": 129,
+      "readout_error": 0.012939453125
+    },
+    {
+      "column": 78,
+      "physical_qubit": 130,
+      "readout_error": 0.005615234375
+    },
+    {
+      "column": 79,
+      "physical_qubit": 132,
+      "readout_error": 0.006103515625
+    },
+    {
+      "column": 80,
+      "physical_qubit": 133,
+      "readout_error": 0.0106201171875
+    },
+    {
+      "column": 81,
+      "physical_qubit": 134,
+      "readout_error": 0.0067138671875
+    },
+    {
+      "column": 82,
+      "physical_qubit": 136,
+      "readout_error": 0.010986328125
+    },
+    {
+      "column": 83,
+      "physical_qubit": 137,
+      "readout_error": 0.0047607421875
+    },
+    {
+      "column": 84,
+      "physical_qubit": 138,
+      "readout_error": 0.00634765625
+    },
+    {
+      "column": 85,
+      "physical_qubit": 139,
+      "readout_error": 0.0111083984375
+    },
+    {
+      "column": 86,
+      "physical_qubit": 140,
+      "readout_error": 0.010009765625
+    },
+    {
+      "column": 87,
+      "physical_qubit": 141,
+      "readout_error": 0.008544921875
+    },
+    {
+      "column": 88,
+      "physical_qubit": 142,
+      "readout_error": 0.0040283203125
+    },
+    {
+      "column": 89,
+      "physical_qubit": 143,
+      "readout_error": 0.0064697265625
+    },
+    {
+      "column": 90,
+      "physical_qubit": 144,
+      "readout_error": 0.00732421875
+    },
+    {
+      "column": 91,
+      "physical_qubit": 145,
+      "readout_error": 0.0101318359375
+    },
+    {
+      "column": 92,
+      "physical_qubit": 146,
+      "readout_error": 0.003173828125
+    },
+    {
+      "column": 93,
+      "physical_qubit": 147,
+      "readout_error": 0.0079345703125
+    },
+    {
+      "column": 94,
+      "physical_qubit": 148,
+      "readout_error": 0.0059814453125
+    },
+    {
+      "column": 95,
+      "physical_qubit": 150,
+      "readout_error": 0.0059814453125
+    },
+    {
+      "column": 96,
+      "physical_qubit": 151,
+      "readout_error": 0.0098876953125
+    },
+    {
+      "column": 97,
+      "physical_qubit": 152,
+      "readout_error": 0.0064697265625
+    },
+    {
+      "column": 98,
+      "physical_qubit": 153,
+      "readout_error": 0.0101318359375
+    },
+    {
+      "column": 99,
+      "physical_qubit": 154,
+      "readout_error": 0.0054931640625
+    }
+  ],
+  "qubit_selection": {
+    "used": true,
+    "method": "lowest_readout_error",
+    "candidates": 156,
+    "calibration_utc": "2026-10-06T01:12:29Z"
+  },
+  "circuit": {
+    "description": "H on each qubit, then measure_all; logical qubit i -> classical bit i",
+    "optimization_level": 1,
+    "gate_counts": {
+      "rz": 200,
+      "sx": 100,
+      "measure": 100,
+      "barrier": 1
+    },
+    "classical_register": "meas"
+  },
+  "sampler": {
+    "class": "qiskit_ibm_runtime.executor_sampler.Sampler",
+    "execution_mode": "job",
+    "options": {
+      "default_shots": 2000,
+      "dynamical_decoupling": {
+        "enable": false,
+        "sequence_type": "XX",
+        "extra_slack_distribution": "middle",
+        "scheduling_method": "alap",
+        "skip_reset_qubits": false
+      },
+      "execution": {
+        "init_qubits": true,
+        "rep_delay": null,
+        "scheduler_timing": false,
+        "stretch_values": false,
+        "meas_type": "classified"
+      },
+      "twirling": {
+        "enable_gates": false,
+        "enable_measure": false,
+        "group": "pauli",
+        "num_randomizations": "auto",
+        "shots_per_randomization": "auto",
+        "strategy": "active-accum"
+      },
+      "max_execution_time": 300,
+      "simulator": {
+        "angle_decimals": 5,
+        "layer_noise_model": null,
+        "seed_simulator": null,
+        "warn_absent": true
+      },
+      "experimental": {},
+      "environment": {
+        "log_level": "WARNING",
+        "job_tags": [
+          "qrng-demo"
+        ],
+        "private": false,
+        "max_execution_time": null,
+        "image": null
+      }
+    },
+    "backend_default_rep_delay_seconds": 0.00025,
+    "readout_error_mitigation": false,
+    "gate_twirling": false,
+    "measurement_twirling": false,
+    "dynamical_decoupling": false
+  },
+  "bits": {
+    "file": "quantum.npz",
+    "array": "bits",
+    "dtype": "uint8",
+    "shape": [
+      2000,
+      100
+    ],
+    "columns": "logical qubit order; column j is physical_qubits[j]",
+    "conversion": "BitArray.to_bool_array(order=\"little\")"
+  },
+  "software": {
+    "python": "3.13.9",
+    "numpy": "2.5.3",
+    "qiskit": "2.5.2",
+    "qiskit-ibm-runtime": "0.50.0"
+  }
+}
