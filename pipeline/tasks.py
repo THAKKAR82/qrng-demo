@@ -224,10 +224,17 @@ def _configure_collect_quantum(parser: argparse.ArgumentParser) -> None:
         type=_qubit_list,
         help="explicit physical qubits, e.g. 3,7,12 (overrides --qubits)",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--dry-run",
         action="store_true",
-        help="plan against a local fake backend; no account, no network, writes nothing",
+        help="plan on a local fake backend and run the real Sampler on Aer; no account, "
+        "no network, writes nothing to data/runs/",
+    )
+    mode.add_argument(
+        "--from-job",
+        metavar="JOB_ID",
+        help="HUMAN ONLY: write the run folder for an already-submitted job; submits nothing",
     )
 
 
@@ -241,6 +248,7 @@ def collect_quantum(args: argparse.Namespace) -> int:
         select_qubits=not args.no_qubit_selection,
         physical_qubits=args.physical_qubits,
         dry_run=args.dry_run,
+        from_job=args.from_job,
     )
     return quantum.run_task(cfg)
 

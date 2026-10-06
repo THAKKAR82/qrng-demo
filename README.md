@@ -85,9 +85,17 @@ Only the human runs real collection. It is interactive by design: it confirms th
 
 ```sh
 source .venv/bin/activate
-python -m pipeline.tasks collect-quantum --dry-run   # offline rehearsal against a fake backend
+python -m pipeline.tasks collect-quantum --dry-run   # offline: real Sampler on Aer with a fake backend
 python -m pipeline.tasks collect-quantum             # real: 100 lowest-readout-error qubits, 2,000 shots
 ```
+
+If anything goes wrong after the job is submitted (you press Ctrl-C while it waits, the network drops, or writing fails), the collector prints a recovery command. Run it to write the run folder from the finished job without submitting anything new:
+
+```sh
+python -m pipeline.tasks collect-quantum --from-job <job_id>
+```
+
+This works best on the Mac that submitted the job, which keeps a submission record in `data/scratch/pending/`. On the other Mac, also pass `--physical-qubits` with the list from the submission summary.
 
 Useful flags: `--shots N`, `--qubits N`, `--backend ibm_fez`, `--no-qubit-selection`, `--physical-qubits 3,7,12`. The run lands in `data/runs/<UTC time>_<backend>/` with `quantum.npz`, `quantum.json`, and the matching `classical.npz` and `classical.json`. Commit that folder.
 

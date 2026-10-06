@@ -18,7 +18,8 @@ from qiskit_ibm_runtime.fake_provider import FakeFez, FakeManilaV2
 from qiskit_ibm_runtime.options_models import SamplerOptions
 from requests.exceptions import ConnectionError as RequestsConnectionError
 
-from pipeline import quantum, runs
+from pipeline import classical, quantum, runs
+from pipeline.paths import RUNS_DIR
 from pipeline.quantum import CollectConfig, CollectionAborted
 
 FAKE_CRN = "crn:v1:bluemix:public:quantum-computing:us-east:a/0123456789abcdef:fedcba98::"
@@ -48,6 +49,8 @@ class FakeService:
         self._usage = usage if usage is not None else {"usage_remaining_seconds": 590.0}
         self._backend = backend if backend is not None else FakeFez()
         self.least_busy_kwargs: dict[str, Any] | None = None
+        self.stored_job: FakeJob | None = None
+        self.retrieved: str | None = None
 
     def active_instance(self) -> str:
         return FAKE_CRN
@@ -66,12 +69,27 @@ class FakeService:
         assert name == self._backend.name
         return self._backend
 
+    def job(self, job_id: str) -> Any:
+        self.retrieved = job_id
+        assert self.stored_job is not None, "no job stored"
+        return self.stored_job
+
 
 class FakeJob:
-    def __init__(self, bits: np.ndarray[Any, Any], statuses: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        bits: np.ndarray[Any, Any],
+        statuses: list[str] | None = None,
+        backend: Any = None,
+    ) -> None:
         self._bits = bits
         self._statuses = iter(statuses or ["QUEUED", "RUNNING", "DONE"])
         self._status = "INITIALIZING"
+        self._backend = backend
+        self.creation_date = "2026-10-05T10:00:00Z"
+
+    def backend(self) -> Any:
+        return self._backend
 
     def job_id(self) -> str:
         return "d3fakejob0000000000"
@@ -94,7 +112,10 @@ class FakeJob:
         return 2.0
 
     def metrics(self) -> dict[str, Any]:
-        return {"timestamps": {"created": "2026-10-05T10:00:00Z", "finished": "x"}, "usage": {}}
+        return {
+            "timestamps": {"created": "2026-10-05T10:00:00Z", "finished": "2026-10-05T10:01:30Z"},
+            "usage": {},
+        }
 
 
 class FakeSampler:
@@ -344,6 +365,7 @@ def _run(
     cfg: CollectConfig | None = None,
     statuses: list[str] | None = None,
     interactive: bool = True,
+    sleep: Any = None,
 ) -> tuple[Path, list[FakeSampler]]:
     samplers: list[FakeSampler] = []
 
@@ -357,8 +379,9 @@ def _run(
         sampler_factory=sampler_factory,
         input_fn=answers(*replies),
         is_interactive=lambda: interactive,
-        sleep=lambda _: None,
-        runs_dir=tmp_path,
+        sleep=sleep or (lambda _: None),
+        runs_dir=tmp_path / "runs",
+        pending_dir=tmp_path / "pending",
     )
     return run_dir, samplers
 
@@ -370,7 +393,8 @@ def test_full_collection_writes_run_folder(
     run_dir, samplers = _run(tmp_path, service, ["fake_fez"])
 
     assert service.least_busy_kwargs == {"operational": True, "simulator": False}
-    assert run_dir.parent == tmp_path
+    assert run_dir.parent == tmp_path / "runs"
+    assert not list((tmp_path / "pending").iterdir())  # pending record removed on success
     assert run_dir.name.endswith("Z_fake_fez")
     (sampler,) = samplers
     assert sampler.calls[0][1] == 40
@@ -384,6 +408,8 @@ def test_full_collection_writes_run_folder(
 
     meta = runs.read_json(run_dir / runs.QUANTUM_JSON)
     assert meta["synthetic"] is False
+    assert meta["recovered"] is False
+    assert meta["job"]["completed_utc"] == "2026-10-05T10:01:30Z"
     assert meta["source"] == "ibm_quantum_hardware"
     assert meta["backend"] == {"name": "fake_fez", "num_qubits": 156}
     assert meta["plan"] == {"plan": "open", "pricing_type": "free", "verified_by": "api"}
@@ -422,7 +448,8 @@ def test_named_backend_is_used(tmp_path: Path) -> None:
 def test_declined_confirmation_submits_nothing(tmp_path: Path) -> None:
     with pytest.raises(CollectionAborted, match="Nothing was submitted"):
         _run(tmp_path, FakeService(), ["ibm_fez"])
-    assert list(tmp_path.iterdir()) == []
+    assert not (tmp_path / "runs").exists()
+    assert not (tmp_path / "pending").exists()
 
 
 def test_non_open_plan_stops_before_backend(tmp_path: Path) -> None:
@@ -452,7 +479,7 @@ def test_failed_job_writes_nothing_and_redacts(tmp_path: Path) -> None:
     assert "ERROR" in str(excinfo.value)
     assert "crn:<redacted>" in str(excinfo.value)
     assert FAKE_CRN not in str(excinfo.value)
-    assert list(tmp_path.iterdir()) == []
+    assert not (tmp_path / "runs").exists()
 
 
 # --- Friendly errors ---------------------------------------------------------------------
@@ -496,13 +523,207 @@ def test_redact() -> None:
     assert "d3fakejob0000000000" in cleaned
 
 
-def test_dry_run_is_offline_and_writes_nothing(capsys: pytest.CaptureFixture[str]) -> None:
-    # conftest makes load_service and make_sampler raise, so this proves neither is used.
-    assert quantum.run_task(CollectConfig(n_qubits=5, shots=10, dry_run=True)) == 0
+def test_dry_run_runs_real_sampler_locally_and_writes_nothing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # conftest makes load_service and make_sampler raise, so this proves neither is used:
+    # the real client-side Sampler runs on a local Aer simulator built from FakeFez.
+    before = sorted(RUNS_DIR.iterdir())
+    assert quantum.run_task(CollectConfig(n_qubits=5, shots=50, dry_run=True)) == 0
     out = capsys.readouterr().out
     assert "DRY RUN" in out
     assert "fake_fez" in out
-    assert "nothing submitted" in out
+    assert "status: DONE" in out
+    assert "Simulated P(1) per qubit" in out
+    assert "nothing submitted to IBM" in out
+    assert sorted(RUNS_DIR.iterdir()) == before
+
+
+def test_local_sampler_refuses_non_simulator() -> None:
+    with pytest.raises(CollectionAborted, match="local Aer simulator"):
+        quantum.make_local_sampler(FakeFez(), quantum.sampler_options(10))
+
+
+def test_local_sampler_result_parses_like_hardware(tmp_path: Path) -> None:
+    """The real Sampler's run/result path, on Aer, through the shared finish_run writer."""
+    fake = FakeFez()
+    sub = quantum.plan_submission(fake, CollectConfig(n_qubits=100, shots=2000))
+    options = quantum.sampler_options(sub.shots)
+    job = quantum.make_local_sampler(quantum.local_simulator(fake), options).run(
+        [sub.isa_circuit], shots=sub.shots
+    )
+    record = quantum.submission_record(
+        sub=sub,
+        plan={"plan": None, "pricing_type": None, "verified_by": "not_checked_dry_run"},
+        job_id=str(job.job_id()),
+        submitted=runs.utc_now(),
+        options=options,
+        source="local_simulator_dry_run",
+    )
+    run_dir = quantum.finish_run(
+        job, record, runs_dir=tmp_path, sleep=lambda _: None, poll_seconds=0
+    )
+    with np.load(run_dir / runs.QUANTUM_NPZ) as data:
+        bits = data["bits"]
+    assert bits.shape == (2000, 100)
+    assert 0.4 < bits.mean() < 0.6
+    meta = runs.read_json(run_dir / runs.QUANTUM_JSON)
+    assert meta["synthetic"] is True
+    assert meta["source"] == "local_simulator_dry_run"
+    assert runs.read_json(run_dir / runs.CLASSICAL_JSON)["matched_bits"] == 200_000
+
+
+# --- Recovery (--from-job) ---------------------------------------------------------------
+
+JOB_ID = "d3fakejob0000000000"
+RECOVERY_HINT = "python -m pipeline.tasks " + "collect-quantum --from-job " + JOB_ID
+
+
+def _recover(tmp_path: Path, service: FakeService, cfg: CollectConfig) -> Path:
+    return quantum.recover_from_job(
+        cfg,
+        service_factory=lambda name: service,
+        input_fn=no_input,
+        is_interactive=lambda: True,
+        sleep=lambda _: None,
+        runs_dir=tmp_path / "runs",
+        pending_dir=tmp_path / "pending",
+    )
+
+
+def test_write_failure_prints_recovery_command_then_recovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def disk_full(folder: Path) -> Any:
+        raise OSError(28, "No space left on device")
+
+    real_collect = classical.collect_for_folder
+    monkeypatch.setattr(classical, "collect_for_folder", disk_full)
+    service = FakeService()
+    with pytest.raises(CollectionAborted, match="No run folder was written"):
+        _run(tmp_path, service, ["fake_fez"])
+    out = capsys.readouterr().out
+    assert RECOVERY_HINT in out
+    assert list((tmp_path / "runs").iterdir()) == []  # partial folder removed
+    pending = tmp_path / "pending" / f"{JOB_ID}.json"
+    assert pending.is_file()
+    expected_bits = FakeSampler(None, {}, None).run([quantum.build_circuit(5)], shots=40)._bits
+
+    # Recover: same bits, same metadata, plus the recovery fields. Nothing is submitted.
+    monkeypatch.setattr(classical, "collect_for_folder", real_collect)
+    service.stored_job = FakeJob(expected_bits, ["DONE"])
+    run_dir = _recover(tmp_path, service, CollectConfig(from_job=JOB_ID))
+    assert service.retrieved == JOB_ID
+    with np.load(run_dir / runs.QUANTUM_NPZ) as data:
+        assert np.array_equal(data["bits"], expected_bits)
+    meta = runs.read_json(run_dir / runs.QUANTUM_JSON)
+    assert meta["recovered"] is True
+    assert meta["recovery"]["submission_record"] == "local pending record"
+    assert meta["plan"]["verified_by"] == "api"
+    assert meta["sampler"]["options"] == quantum.sampler_options(40)
+    assert meta["qubit_selection"]["method"] == "lowest_readout_error"
+    assert meta["job"]["qpu_seconds"] == 2.0
+    assert runs.read_json(run_dir / runs.CLASSICAL_JSON)["matched_bits"] == 200
+    assert not pending.exists()
+
+
+def test_interrupt_while_waiting_prints_recovery_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def interrupt(_: float) -> None:
+        raise KeyboardInterrupt
+
+    with pytest.raises(CollectionAborted):
+        _run(tmp_path, FakeService(), ["fake_fez"], sleep=interrupt)
+    assert RECOVERY_HINT in capsys.readouterr().out
+    assert (tmp_path / "pending" / f"{JOB_ID}.json").is_file()
+
+
+def test_failed_job_does_not_suggest_recovery(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(quantum.JobFailed):
+        _run(tmp_path, FakeService(), ["fake_fez"], statuses=["ERROR"])
+    assert "--from-job" not in capsys.readouterr().out
+
+
+def _stored(statuses: list[str]) -> FakeService:
+    service = FakeService()
+    service.stored_job = FakeJob(np.zeros((8, 3), dtype=np.uint8), statuses, backend=FakeFez())
+    return service
+
+
+def test_recovery_without_pending_record_needs_qubits(tmp_path: Path) -> None:
+    service = _stored(["DONE"])
+    with pytest.raises(CollectionAborted, match="--physical-qubits"):
+        _recover(tmp_path, service, CollectConfig(from_job=JOB_ID))
+
+    run_dir = _recover(
+        tmp_path, service, CollectConfig(from_job=JOB_ID, physical_qubits=[12, 3, 7])
+    )
+    meta = runs.read_json(run_dir / runs.QUANTUM_JSON)
+    assert run_dir.name == "2026-10-05T100000Z_fake_fez"
+    assert meta["recovered"] is True
+    assert meta["recovery"]["submission_record"] == "reconstructed"
+    assert [q["physical_qubit"] for q in meta["qubits"]] == [12, 3, 7]
+    assert all(isinstance(q["readout_error"], float) for q in meta["qubits"])
+    assert meta["qubit_selection"]["method"] == "unknown_recovered"
+    assert meta["sampler"]["options"] is None
+    assert meta["sampler"]["readout_error_mitigation"] is None
+    assert meta["job"]["shots"] == 8
+    assert meta["plan"]["verified_by"] == "api"
+
+
+def test_recovery_rejects_wrong_qubit_count(tmp_path: Path) -> None:
+    cfg = CollectConfig(from_job=JOB_ID, physical_qubits=[1, 2])
+    with pytest.raises(CollectionAborted, match="Unexpected result shape"):
+        _recover(tmp_path, _stored(["DONE"]), cfg)
+
+
+def test_recovery_refuses_non_interactive_before_loading_account() -> None:
+    def service_factory(name: str) -> Any:
+        raise AssertionError("account must not be loaded")
+
+    with pytest.raises(CollectionAborted, match="interactive terminal"):
+        quantum.recover_from_job(
+            CollectConfig(from_job=JOB_ID),
+            service_factory=service_factory,
+            is_interactive=lambda: False,
+        )
+
+
+def test_recovery_rejects_bad_job_id(tmp_path: Path) -> None:
+    with pytest.raises(CollectionAborted, match="job ID"):
+        _recover(tmp_path, FakeService(), CollectConfig(from_job="../../etc/passwd"))
+
+
+def test_recovery_of_failed_job_writes_nothing(tmp_path: Path) -> None:
+    cfg = CollectConfig(from_job=JOB_ID, physical_qubits=[1, 2, 3])
+    with pytest.raises(quantum.JobFailed):
+        _recover(tmp_path, _stored(["CANCELLED"]), cfg)
+    assert not (tmp_path / "runs").exists()
+
+
+def test_recovery_never_overwrites(tmp_path: Path) -> None:
+    cfg = CollectConfig(from_job=JOB_ID, physical_qubits=[1, 2, 3])
+    _recover(tmp_path, _stored(["DONE"]), cfg)
+    with pytest.raises(CollectionAborted, match="never overwritten"):
+        _recover(tmp_path, _stored(["DONE"]), cfg)
+
+
+def test_run_task_from_job_errors_are_friendly(capsys: pytest.CaptureFixture[str]) -> None:
+    def service_factory(name: str) -> Any:
+        raise RequestsConnectionError(f"https://x/{FAKE_CRN}")
+
+    code = quantum.run_task(
+        CollectConfig(from_job=JOB_ID),
+        service_factory=service_factory,
+        is_interactive=lambda: True,
+    )
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "network problem" in out
+    assert FAKE_CRN not in out
 
 
 def test_account_name_from_env(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -10,9 +10,12 @@ Tests drive every step with a mocked service, backend, and Sampler.
 from __future__ import annotations
 
 import contextlib
+import copy
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -24,7 +27,7 @@ import numpy as np
 import numpy.typing as npt
 
 from pipeline import classical, runs
-from pipeline.paths import RUNS_DIR
+from pipeline.paths import RUNS_DIR, SCRATCH_DATA_DIR
 
 ACCOUNT_ENV = "QRNG_IBM_ACCOUNT"
 DEFAULT_ACCOUNT = "qrng-open"
@@ -35,6 +38,7 @@ MIN_REMAINING_SECONDS = 60.0
 MAX_EXECUTION_SECONDS = 300
 POLL_SECONDS = 5.0
 DRY_RUN_BACKEND = "FakeFez"
+PENDING_DIR = SCRATCH_DATA_DIR / "pending"
 
 REQUIRED_PLAN = "open"
 REQUIRED_PRICING_TYPE = "free"
@@ -46,6 +50,7 @@ _FALLBACK_REP_DELAY = 250e-6
 
 _CRN_RE = re.compile(r"crn:[^\s'\"),;]*", re.IGNORECASE)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_\-]{32,}")
+_JOB_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 
 InputFn = Callable[[str], str]
 
@@ -244,6 +249,7 @@ class CollectConfig:
     physical_qubits: list[int] | None = None
     account: str = field(default_factory=account_name)
     dry_run: bool = False
+    from_job: str | None = None
 
 
 @dataclass
@@ -410,11 +416,14 @@ def _status_name(status: Any) -> str:
 def wait_for_job(job: Any, *, sleep: Callable[[float], None], poll_seconds: float) -> str:
     started = time.monotonic()
     while True:
+        # Check finality before reading the status, so a job finishing between the two
+        # calls can't return a stale non-final status.
+        final = job.in_final_state()
         status = _status_name(job.status())
         elapsed = int(time.monotonic() - started)
         print(f"\r  status: {status:<10} elapsed {elapsed // 60}:{elapsed % 60:02d}", end="")
         sys.stdout.flush()
-        if job.in_final_state():
+        if final:
             print()
             return status
         sleep(poll_seconds)
@@ -435,67 +444,172 @@ def _job_details(job: Any) -> dict[str, Any]:
     return details
 
 
-def quantum_metadata(
+class JobFailed(CollectionAborted):
+    """The job itself ended in a non-DONE state; there is nothing to recover."""
+
+
+def _sampler_record(options: dict[str, Any] | None, rep_delay: float | None) -> dict[str, Any]:
+    known = options is not None
+    return {
+        "class": "qiskit_ibm_runtime.executor_sampler.Sampler",
+        "execution_mode": "job",
+        "options": options,
+        "backend_default_rep_delay_seconds": rep_delay,
+        "readout_error_mitigation": False if known else None,
+        "gate_twirling": False if known else None,
+        "measurement_twirling": False if known else None,
+        "dynamical_decoupling": False if known else None,
+    }
+
+
+def _base_record(
     *,
     run_id: str,
-    sub: Submission,
+    source: str,
+    backend: dict[str, Any],
     plan: dict[str, Any],
-    job_id: str,
-    submitted: datetime,
-    completed: datetime,
-    details: dict[str, Any],
-    options: dict[str, Any],
+    job: dict[str, Any],
+    qubits: list[dict[str, Any]],
+    selection: dict[str, Any],
+    gate_counts: dict[str, int] | None,
+    sampler: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "schema_version": runs.SCHEMA_VERSION,
         "run_id": run_id,
-        "created_utc": runs.iso_utc(completed),
-        "source": "ibm_quantum_hardware",
-        "synthetic": False,
-        "backend": {"name": sub.backend_name, "num_qubits": sub.backend_qubits},
+        "created_utc": None,
+        "source": source,
+        "synthetic": source != "ibm_quantum_hardware",
+        "recovered": False,
+        "recovery": None,
+        "backend": backend,
         "plan": plan,
-        "job": {
-            "job_id": job_id,
-            "shots": sub.shots,
-            "submitted_utc": runs.iso_utc(submitted),
-            "completed_utc": runs.iso_utc(completed),
-            "api_timestamps": details["api_timestamps"],
-            "qpu_seconds": details["qpu_seconds"],
-            "estimated_qpu_seconds": round(sub.estimate_seconds, 2),
-        },
-        "qubits": [
-            {"column": column, "physical_qubit": q, "readout_error": err}
-            for column, (q, err) in enumerate(
-                zip(sub.physical_qubits, sub.readout_errors, strict=True)
-            )
-        ],
-        "qubit_selection": sub.selection,
+        "job": job,
+        "qubits": qubits,
+        "qubit_selection": selection,
         "circuit": {
             "description": "H on each qubit, then measure_all; logical qubit i -> classical bit i",
             "optimization_level": OPTIMIZATION_LEVEL,
-            "gate_counts": sub.gate_counts,
+            "gate_counts": gate_counts,
             "classical_register": "meas",
         },
-        "sampler": {
-            "class": "qiskit_ibm_runtime.executor_sampler.Sampler",
-            "execution_mode": "job",
-            "options": options,
-            "backend_default_rep_delay_seconds": sub.rep_delay,
-            "readout_error_mitigation": False,
-            "gate_twirling": False,
-            "measurement_twirling": False,
-            "dynamical_decoupling": False,
-        },
+        "sampler": sampler,
         "bits": {
             "file": runs.QUANTUM_NPZ,
             "array": "bits",
             "dtype": "uint8",
-            "shape": [sub.shots, len(sub.physical_qubits)],
+            "shape": [job["shots"], len(qubits)],
             "columns": "logical qubit order; column j is physical_qubits[j]",
             "conversion": 'BitArray.to_bool_array(order="little")',
         },
         "software": runs.software_versions(),
     }
+
+
+def submission_record(
+    *,
+    sub: Submission,
+    plan: dict[str, Any],
+    job_id: str,
+    submitted: datetime,
+    options: dict[str, Any],
+    source: str = "ibm_quantum_hardware",
+) -> dict[str, Any]:
+    """Everything known at submission time. Saved as the pending record, completed later."""
+    return _base_record(
+        run_id=runs.make_run_id(submitted, sub.backend_name),
+        source=source,
+        backend={"name": sub.backend_name, "num_qubits": sub.backend_qubits},
+        plan=plan,
+        job={
+            "job_id": job_id,
+            "shots": sub.shots,
+            "submitted_utc": runs.iso_utc(submitted),
+            "completed_utc": None,
+            "api_timestamps": None,
+            "qpu_seconds": None,
+            "estimated_qpu_seconds": round(sub.estimate_seconds, 2),
+        },
+        qubits=[
+            {"column": column, "physical_qubit": q, "readout_error": err}
+            for column, (q, err) in enumerate(
+                zip(sub.physical_qubits, sub.readout_errors, strict=True)
+            )
+        ],
+        selection=sub.selection,
+        gate_counts=sub.gate_counts,
+        sampler=_sampler_record(options, sub.rep_delay),
+    )
+
+
+def _parse_time(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        try:
+            moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return moment if moment.tzinfo is not None else moment.astimezone()
+
+
+def finish_run(
+    job: Any,
+    record: dict[str, Any],
+    *,
+    runs_dir: Path,
+    sleep: Callable[[float], None],
+    poll_seconds: float,
+) -> Path:
+    """Wait for ``job``, convert its result, and write the complete run folder.
+
+    Shared by normal collection, ``--from-job`` recovery, and the dry run, so all three
+    exercise the same result-parsing and writing code. A partly written folder is removed.
+    """
+    job_id = record["job"]["job_id"]
+    status = wait_for_job(job, sleep=sleep, poll_seconds=poll_seconds)
+    if status != "DONE":
+        message = ""
+        with contextlib.suppress(Exception):
+            message = f": {redact(str(job.error_message()))}"
+        raise JobFailed(f"Job {job_id} ended as {status}{message}. Nothing was written.")
+
+    result = job.result()
+    n_qubits = len(record["qubits"])
+    shots = record["job"]["shots"]
+    bit_array = result[0].data.meas
+    bits = bits_from_bitarray(bit_array, n_qubits, shots or int(bit_array.num_shots))
+
+    meta = copy.deepcopy(record)
+    now = runs.utc_now()
+    details = _job_details(job)
+    finished = _parse_time((details["api_timestamps"] or {}).get("finished"))
+    meta["created_utc"] = runs.iso_utc(now)
+    meta["job"]["shots"] = int(bits.shape[0])
+    meta["job"]["completed_utc"] = runs.iso_utc(finished or now)
+    meta["job"]["api_timestamps"] = details["api_timestamps"]
+    meta["job"]["qpu_seconds"] = details["qpu_seconds"]
+    meta["bits"]["shape"] = list(bits.shape)
+
+    run_dir: Path = runs_dir / str(meta["run_id"])
+    if run_dir.exists():
+        raise CollectionAborted(
+            f"{run_dir.name} already exists; run folders are never overwritten."
+        )
+    run_dir.mkdir(parents=True)
+    try:
+        np.savez_compressed(run_dir / runs.QUANTUM_NPZ, bits=bits)
+        runs.write_json(run_dir / runs.QUANTUM_JSON, meta)
+        classical.collect_for_folder(run_dir)
+    except BaseException:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise
+    print(
+        f"Wrote {run_dir.name}/: {runs.QUANTUM_NPZ}, {runs.QUANTUM_JSON}, "
+        f"{runs.CLASSICAL_NPZ}, {runs.CLASSICAL_JSON}"
+    )
+    runs.warn_if_large(run_dir)
+    return run_dir
 
 
 def _validated_options(shots: int) -> dict[str, Any]:
@@ -508,20 +622,188 @@ def _validated_options(shots: int) -> dict[str, Any]:
     return options
 
 
-# --- The task ----------------------------------------------------------------------------
+# --- Pending records and recovery --------------------------------------------------------
 
 
-def dry_run(cfg: CollectConfig) -> int:
-    """Steps 5 to 8 against a local fake backend: no account, no network, writes nothing."""
+def _check_job_id(job_id: str) -> str:
+    if not _JOB_ID_RE.match(job_id):
+        raise CollectionAborted(f"That does not look like a job ID: {job_id!r}")
+    return job_id
+
+
+def save_pending(record: dict[str, Any], pending_dir: Path) -> Path:
+    """Keep the submission record locally (gitignored) so ``--from-job`` can rebuild metadata."""
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    path = pending_dir / f"{_check_job_id(record['job']['job_id'])}.json"
+    runs.write_json(path, record)
+    return path
+
+
+def recovery_command(job_id: str) -> str:
+    return f"python -m pipeline.tasks collect-quantum --from-job {job_id}"
+
+
+def _reconstructed_record(job: Any, cfg: CollectConfig, plan: dict[str, Any]) -> dict[str, Any]:
+    """Metadata for a job with no local pending record. Unknowns are recorded as ``None``."""
+    job_id = str(job.job_id())
+    if not cfg.physical_qubits:
+        raise CollectionAborted(
+            f"No local submission record for job {job_id} (it is kept in data/scratch/pending/ "
+            "on the Mac that submitted it). Re-run with --physical-qubits set to the list shown "
+            "in that run's summary, in the same order."
+        )
+    backend = job.backend()
+    if backend is None or _is_simulator(backend):
+        raise CollectionAborted(f"Job {job_id} did not run on a real backend.")
+    errors = readout_errors(backend)
+    submitted = _parse_time(job.creation_date) or runs.utc_now()
+    return _base_record(
+        run_id=runs.make_run_id(submitted, str(backend.name)),
+        source="ibm_quantum_hardware",
+        backend={"name": str(backend.name), "num_qubits": int(backend.num_qubits)},
+        plan=plan,
+        job={
+            "job_id": job_id,
+            "shots": None,
+            "submitted_utc": runs.iso_utc(submitted),
+            "completed_utc": None,
+            "api_timestamps": None,
+            "qpu_seconds": None,
+            "estimated_qpu_seconds": None,
+        },
+        qubits=[
+            {"column": column, "physical_qubit": q, "readout_error": errors.get(q)}
+            for column, q in enumerate(cfg.physical_qubits)
+        ],
+        selection={
+            "used": None,
+            "method": "unknown_recovered",
+            "candidates": None,
+            "calibration_utc": calibration_utc(backend),
+            "note": "Reconstructed at recovery: qubits from --physical-qubits; readout errors "
+            "from the calibration current at recovery time, not at submission.",
+        },
+        gate_counts=None,
+        sampler=_sampler_record(None, rep_delay_seconds(backend)),
+    )
+
+
+def recover_from_job(
+    cfg: CollectConfig,
+    *,
+    service_factory: Callable[[str], Any] | None = None,
+    input_fn: InputFn = input,
+    is_interactive: Callable[[], bool] = lambda: sys.stdin.isatty(),
+    sleep: Callable[[float], None] = time.sleep,
+    poll_seconds: float = POLL_SECONDS,
+    runs_dir: Path = RUNS_DIR,
+    pending_dir: Path = PENDING_DIR,
+) -> Path:
+    """Write the run folder for an already-submitted job. Submits nothing."""
+    service_factory = service_factory or load_service
+    job_id = _check_job_id(cfg.from_job or "")
+    if not is_interactive():
+        raise CollectionAborted("Refusing: --from-job must be run from an interactive terminal.")
+
+    pending_path = pending_dir / f"{job_id}.json"
+    print(f"Loading saved account {cfg.account!r} ...")
+    service = service_factory(cfg.account)
+    print(f"Retrieving job {job_id}. Nothing new will be submitted.")
+    job = service.job(job_id)
+
+    if pending_path.is_file():
+        record = runs.read_json(pending_path)
+        if record["job"]["job_id"] != job_id:
+            raise CollectionAborted(f"{pending_path.name} does not belong to job {job_id}.")
+        how = "local pending record"
+    else:
+        print("No local submission record; reconstructing metadata from the job.")
+        record = _reconstructed_record(job, cfg, check_open_plan(service, input_fn))
+        how = "reconstructed"
+    record["recovered"] = True
+    record["recovery"] = {
+        "recovered_utc": runs.iso_utc(runs.utc_now()),
+        "submission_record": how,
+    }
+
+    run_dir = finish_run(job, record, runs_dir=runs_dir, sleep=sleep, poll_seconds=poll_seconds)
+    pending_path.unlink(missing_ok=True)
+    print(f"Recovered run folder: data/runs/{run_dir.name}")
+    return run_dir
+
+
+# --- Dry run -----------------------------------------------------------------------------
+
+
+def local_simulator(fake_backend: Any) -> Any:
+    """Aer simulator with the fake backend's target, readout and gate errors (no T1/T2).
+
+    Dropping thermal relaxation keeps the noise stabilizer-compatible, so 100+ qubits
+    simulate in about a second instead of exhausting memory.
+    """
+    from qiskit_aer import AerSimulator
+    from qiskit_aer.noise import NoiseModel
+
+    noise = NoiseModel.from_backend(
+        fake_backend, thermal_relaxation=False, gate_error=True, readout_error=True
+    )
+    return AerSimulator.from_backend(fake_backend, noise_model=noise, method="stabilizer")
+
+
+def make_local_sampler(simulator: Any, options: dict[str, Any]) -> Any:
+    """The same client-side Sampler as real runs, but only ever on a local Aer simulator."""
+    from qiskit_aer import AerSimulator
+    from qiskit_ibm_runtime.executor_sampler import Sampler
+
+    if not isinstance(simulator, AerSimulator):
+        raise CollectionAborted("The dry run must use a local Aer simulator.")
+    return Sampler(mode=simulator, options=options)
+
+
+def dry_run(cfg: CollectConfig, *, poll_seconds: float = 0.2) -> int:
+    """Plan against a fake backend, then run the real Sampler locally and parse and write the
+    result into a temporary folder. No account, no network, nothing kept."""
     from qiskit_ibm_runtime import fake_provider
 
-    backend = getattr(fake_provider, DRY_RUN_BACKEND)()
-    print(f"DRY RUN against local fake backend {backend.name}. No account, no network.")
-    sub = plan_submission(backend, cfg)
-    _validated_options(cfg.shots)
+    try:
+        import qiskit_aer  # noqa: F401
+    except ImportError:
+        raise CollectionAborted(
+            "The dry run needs qiskit-aer: pip install -r requirements-dev.txt"
+        ) from None
+
+    fake = getattr(fake_provider, DRY_RUN_BACKEND)()
+    print(f"DRY RUN against local fake backend {fake.name}. No account, no network.")
+    options = _validated_options(cfg.shots)
+    sub = plan_submission(fake, cfg)
     print_summary(sub, None)
-    print("Dry run: nothing submitted, nothing written.")
+
+    sampler = make_local_sampler(local_simulator(fake), options)
+    job = sampler.run([sub.isa_circuit], shots=sub.shots)
+    print(f"Running locally on Aer (simulated, not hardware). Local job ID: {job.job_id()}")
+    record = submission_record(
+        sub=sub,
+        plan={"plan": None, "pricing_type": None, "verified_by": "not_checked_dry_run"},
+        job_id=str(job.job_id()),
+        submitted=runs.utc_now(),
+        options=options,
+        source="local_simulator_dry_run",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = finish_run(
+            job, record, runs_dir=Path(tmp), sleep=time.sleep, poll_seconds=poll_seconds
+        )
+        with np.load(run_dir / runs.QUANTUM_NPZ) as data:
+            p_one = data["bits"].mean(axis=0)
+        print(
+            f"Simulated P(1) per qubit: min {p_one.min():.3f}, mean {p_one.mean():.3f}, "
+            f"max {p_one.max():.3f}"
+        )
+    print("Dry run complete: nothing submitted to IBM, nothing written to data/runs/.")
     return 0
+
+
+# --- Real collection ---------------------------------------------------------------------
 
 
 def collect_quantum(
@@ -534,6 +816,7 @@ def collect_quantum(
     sleep: Callable[[float], None] = time.sleep,
     poll_seconds: float = POLL_SECONDS,
     runs_dir: Path = RUNS_DIR,
+    pending_dir: Path = PENDING_DIR,
 ) -> Path:
     """Run SPEC.md, Section 6.3, steps 1 to 9. Returns the new run folder."""
     # Resolved at call time (not as defaults) so tests can patch the module-level functions.
@@ -562,44 +845,32 @@ def collect_quantum(
     print(f"Submitted. Job ID: {job_id}")
 
     try:
-        status = wait_for_job(job, sleep=sleep, poll_seconds=poll_seconds)
+        record = submission_record(
+            sub=sub, plan=plan, job_id=job_id, submitted=submitted, options=options
+        )
+        pending_path = save_pending(record, pending_dir)
+        run_dir = finish_run(job, record, runs_dir=runs_dir, sleep=sleep, poll_seconds=poll_seconds)
+    except JobFailed:
+        raise
     except KeyboardInterrupt:
-        raise CollectionAborted(
-            f"Stopped waiting. Job {job_id} is still on IBM's side; nothing was written."
-        ) from None
-    if status != "DONE":
-        message = ""
-        with contextlib.suppress(Exception):
-            message = f": {redact(str(job.error_message()))}"
-        raise CollectionAborted(f"Job {job_id} ended as {status}{message}. Nothing was written.")
+        print(
+            f"\nStopped waiting. The job continues on IBM's side. Recover it with:\n"
+            f"  {recovery_command(job_id)}"
+        )
+        raise CollectionAborted("No run folder was written.") from None
+    except Exception as exc:
+        print(
+            f"\nThe job was submitted but the run could not be written: "
+            f"{friendly_error(exc, cfg.account)}"
+        )
+        print(
+            f"Nothing is lost; the results stay on IBM's side. Recover them with:\n"
+            f"  {recovery_command(job_id)}"
+        )
+        raise CollectionAborted("No run folder was written.") from None
 
-    completed = runs.utc_now()
-    result = job.result()
-    bits = bits_from_bitarray(result[0].data.meas, len(sub.physical_qubits), sub.shots)
-
-    run_id = runs.make_run_id(submitted, sub.backend_name)
-    run_dir = runs_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
-    np.savez_compressed(run_dir / runs.QUANTUM_NPZ, bits=bits)
-    runs.write_json(
-        run_dir / runs.QUANTUM_JSON,
-        quantum_metadata(
-            run_id=run_id,
-            sub=sub,
-            plan=plan,
-            job_id=job_id,
-            submitted=submitted,
-            completed=completed,
-            details=_job_details(job),
-            options=options,
-        ),
-    )
-    print(f"Wrote {run_dir / runs.QUANTUM_NPZ} and {runs.QUANTUM_JSON}")
-
-    classical.collect_for_folder(run_dir)
-    print(f"Wrote matching {runs.CLASSICAL_NPZ} and {runs.CLASSICAL_JSON}")
-    runs.warn_if_large(run_dir)
-    print(f"Run folder: data/runs/{run_id}")
+    pending_path.unlink(missing_ok=True)
+    print(f"Run folder: data/runs/{run_dir.name}")
     return run_dir
 
 
@@ -633,7 +904,11 @@ def run_task(cfg: CollectConfig, **kwargs: Any) -> int:
     try:
         if cfg.dry_run:
             return dry_run(cfg)
-        collect_quantum(cfg, **kwargs)
+        if cfg.from_job:
+            kwargs.pop("sampler_factory", None)
+            recover_from_job(cfg, **kwargs)
+        else:
+            collect_quantum(cfg, **kwargs)
     except CollectionAborted as exc:
         print(f"\n{redact(str(exc))}")
         return 2

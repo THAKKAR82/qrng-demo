@@ -63,7 +63,12 @@ def test_collect_quantum_cli_builds_config(monkeypatch: pytest.MonkeyPatch) -> N
     assert main(["collect-quantum", "--shots", "100", "--qubits", "7", "--backend", "ibm_fez"]) == 0
     assert main(["collect-quantum", "--no-qubit-selection", "--dry-run"]) == 0
     assert main(["collect-quantum", "--physical-qubits", "3,7,12"]) == 0
-    first, second, third = seen
+    assert main(["collect-quantum", "--from-job", "d3abc"]) == 0
+    first, second, third, fourth = seen
+    assert fourth.from_job == "d3abc"
+    assert fourth.dry_run is False
+    with pytest.raises(SystemExit):
+        main(["collect-quantum", "--from-job", "d3abc", "--dry-run"])
     assert (first.shots, first.n_qubits, first.backend_name, first.select_qubits) == (
         100,
         7,

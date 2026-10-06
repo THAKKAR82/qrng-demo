@@ -1,6 +1,8 @@
 # Development tools, exact pins. Install with: pip install -r requirements-dev.txt
 -r requirements.txt
 -e .
+# Local simulation for collect-quantum --dry-run (runs the real Sampler on Aer).
+qiskit-aer==0.17.2
 ruff==0.16.10
 mypy==2.4.0
 pytest==9.1.1

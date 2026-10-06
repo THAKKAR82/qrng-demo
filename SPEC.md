@@ -100,6 +100,7 @@ Neither JSON file ever contains any key, token, CRN, or instance name. Run folde
 
 - `schema_version`, `run_id`, `created_utc`
 - `source`: `"ibm_quantum_hardware"` or `"synthetic"`, and a boolean `synthetic`
+- `recovered`: `true` if the folder was written by `collect-quantum --from-job` (Section 6.3), with a `recovery` block saying when and from which record; otherwise `false` and `null`
 - `backend`: name and qubit count; `plan`: the `plan` and `pricing_type` values checked, and how they were verified (`"api"` or `"human_typed_open_plan"`)
 - `job`: job ID, shots, submit and completion times, and QPU seconds used (if the job reports them)
 - `qubits`: a list with one entry per column: `column`, `physical_qubit`, and `readout_error` at selection time
@@ -145,13 +146,29 @@ This task runs on the human's machine only. It is never run by Claude, CI, or te
 6. Picks qubits. N is `--qubits N` (capped at the backend's size). By default it takes the N qubits with the lowest measurement error in `backend.target["measure"]` at submission time, skipping qubits with no reported error. `--no-qubit-selection` disables this and uses physical qubits `0 … N−1`; `--physical-qubits 3,7,12` selects explicitly. Either way it records each chosen qubit's readout error and the calibration time.
 7. Builds and transpiles the circuit with `generate_preset_pass_manager(optimization_level=1, backend=backend, initial_layout=<qubits>)`, then checks the layout of the transpiled circuit matches the requested physical qubits.
 8. **Shows a summary and asks for confirmation:** backend, qubits, shots, a rough QPU-time estimate, and remaining allowance. The human must type the backend name to proceed.
-9. Submits one Sampler job (Section 5.2), prints the job ID immediately, and polls with a one-line status display until the job finishes. It converts the result as described in Section 5.2 and writes `quantum.npz` and `quantum.json` (including the QPU usage the job reports) to a new run folder. It then generates the matching classical stream into the same folder (`classical.npz`, `classical.json`).
+9. Submits one Sampler job (Section 5.2) and prints the job ID immediately. It saves the submission record (everything `quantum.json` will hold that is known at submission) to `data/scratch/pending/<job_id>.json`, which is gitignored and local to that Mac. It polls with a one-line status display until the job finishes, converts the result as described in Section 5.2, and writes `quantum.npz` and `quantum.json` (including the QPU usage the job reports) to a new run folder. It then generates the matching classical stream into the same folder (`classical.npz`, `classical.json`) and deletes the pending record.
+
+If anything fails after submission (the human interrupts the wait, the network drops, or writing fails), the collector removes any partly written run folder, keeps the pending record, and prints the exact recovery command: `python -m pipeline.tasks collect-quantum --from-job <job_id>`. A job that itself ends in `ERROR` or `CANCELLED` is reported as such, with no recovery command, because there is nothing to recover.
 
 Network and authentication failures end with a short, redacted message (Section 6.1), not a traceback.
 
 Defaults: N = 100 qubits (fewer if the backend is smaller), 2,000 shots (200,000 quantum bits).
 
-A `--dry-run` flag runs steps 5 to 8 against a local fake backend from `qiskit_ibm_runtime.fake_provider`, with no account and no network access. It prints what would be submitted and writes nothing to `data/runs/`. Claude may run the dry run.
+#### Recovery (`--from-job <job_id>`)
+
+Recovery writes the run folder for a job that was already submitted. It never submits anything, but it loads the saved account, so it is **human only**, just like a real collection, and it also refuses to run without a TTY. It retrieves the job with `service.job(<job_id>)`, waits if the job is still running, and then uses the same result-parsing and writing code as step 9.
+
+- If the pending record exists (the normal case, on the Mac that submitted), it becomes the metadata, so `quantum.json` is identical to a normal run's apart from `recovered: true` and a `recovery` block (`recovered_utc`, and `submission_record: "local pending record"`).
+- Without a pending record (for example, on the other Mac), recovery requires `--physical-qubits` in column order, as printed in the submission summary. It runs the Open Plan check (step 3) for the `plan` field, takes readout errors from the backend's calibration at recovery time, and marks anything unknown: `qubit_selection.method: "unknown_recovered"`, Sampler options `null`, and mitigation flags `null`. It sets `submission_record: "reconstructed"`.
+- An existing run folder is never overwritten.
+
+Normal runs record `recovered: false` and `recovery: null`.
+
+#### Dry run (`--dry-run`)
+
+The dry run uses no account and no network access, and Claude may run it. It runs steps 5 to 8 against the local fake backend `FakeFez` from `qiskit_ibm_runtime.fake_provider`. It then exercises the real pipeline end to end: it submits the circuit through the **same client-side Sampler** with the same options, polls it, parses the result with the same code as a real run, and writes the complete run folder (quantum and classical files) into a temporary directory that is deleted afterwards. Nothing is written to `data/runs/`.
+
+The Sampler runs locally on Qiskit Aer (a dev dependency). With a fake backend as its mode, the Sampler builds an Aer simulator with the device's full noise model, including thermal relaxation, and that cannot simulate 100 qubits in memory. The dry run therefore gives the Sampler an `AerSimulator` built from `FakeFez` with the same target and that backend's readout and gate errors, but no thermal relaxation, using the stabilizer method. The default 100 × 2,000 run then takes about a second. Its output is simulated and is never kept; the dry-run record is labelled `source: "local_simulator_dry_run"` and `synthetic: true`.
 
 ## 7. Analysis
 
@@ -202,6 +219,8 @@ Everything runs through `python -m pipeline.tasks <task>`.
 | `make-sample` | Regenerates `data/sample/synthetic-v1/`. | Anyone |
 | `collect-classical --run <id>` / `--sample <name> [--bits N]` | Adds `classical.npz` and `classical.json` to a run (matching its quantum bit count), or generates them standalone into `data/sample/<name>/`. | Anyone |
 | `collect-quantum` | Real hardware collection (Section 6.3). | **Human only** |
+| `collect-quantum --from-job <id>` | Writes the run folder for an already-submitted job; submits nothing (Section 6.3). | **Human only** |
+| `collect-quantum --dry-run` | Runs the real Sampler locally on Aer with a fake backend; writes nothing to `data/runs/`. | Anyone |
 | `analyze --run <id>` / `--sample <name>` | Writes `results.json`. | Anyone |
 | `notebook` | Executes the notebook into `data/scratch/`. | Anyone |
 | `ui-dev` | Starts the Vite dev server. | Anyone |
@@ -217,5 +236,5 @@ Everything runs through `python -m pipeline.tasks <task>`.
 - **Python:** 3.11 or newer. Use a plain `python -m venv .venv` and `pip`. Exact pins are in `requirements.txt` (runtime) and `requirements-dev.txt` (tools, plus the package in editable mode); `pyproject.toml` holds compatible ranges and tool configuration.
 - **Node:** version 20.19 or newer (or 22.12 or newer). UI dependencies are pinned exactly in `ui/package.json`, with `ui/package-lock.json` committed. Install with `npm ci`.
 - **Quality checks:** ruff for linting and formatting, mypy in strict mode, and pytest. Pre-commit runs detect-secrets, ruff, mypy, and basic hygiene hooks.
-- **Tests never touch IBM Quantum.** Collector tests use a mocked `QiskitRuntimeService`. They must cover refusal on a non-Open-Plan instance, refusal on low remaining allowance, the bit-order conversion, and that no CRN or token appears in output.
+- **Tests never touch IBM Quantum.** Collector tests use a mocked `QiskitRuntimeService`; the Sampler is either mocked or the real client-side Sampler running locally on Aer (`qiskit-aer`, a dev dependency). They must cover refusal on a non-Open-Plan instance, refusal on low remaining allowance, the bit-order conversion, and that no CRN or token appears in output.
 - **Version control:** run folders, sample data, the notebook (outputs cleared), and `demo/index.html` are committed. `data/scratch/`, `scratch/`, `.env*`, and virtualenvs are not.
