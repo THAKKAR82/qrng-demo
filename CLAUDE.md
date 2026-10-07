@@ -4,7 +4,7 @@ SPEC.md is the source of truth. These rules apply in every session.
 
 ## Hard rules
 
-1. **Never run real quantum collection or the refresh task.** Never run code that submits jobs to IBM Quantum or creates a `QiskitRuntimeService` against real hardware. That includes `python -m pipeline.tasks collect-quantum` and `refresh`, ad-hoc scripts, notebook cells, and `python -c`. The human runs real collection. Work with mocks, committed runs in `data/runs/`, synthetic data in `data/sample/`, and `collect-quantum --dry-run`, which uses a local fake backend and no account.
+1. **Never run real quantum collection, the refresh task, or the live server.** Never run code that submits jobs to IBM Quantum or creates a `QiskitRuntimeService` against real hardware. That includes `python -m pipeline.tasks collect-quantum`, `refresh`, and `live-server`, ad-hoc scripts, notebook cells, and `python -c`. Live-server tests run the server in-process with a mocked service only; the UI verifier mocks the live API in the browser. The human runs real collection. Work with mocks, committed runs in `data/runs/`, synthetic data in `data/sample/`, and `collect-quantum --dry-run`, which uses a local fake backend and no account.
 2. **Never read, list, print, or copy anything from `~/.qiskit`** or any other credentials file (`.env*`, `qiskit-ibm.json`, keychains). This includes doing it indirectly through Python, Node, or shell commands, or calling `active_account()`, `saved_accounts()`, `instances()`, or `active_instance()`.
 3. **Never `git push`**, in any form. At the end of each task, commit with a clear message; the human reviews and pushes.
 4. **Read SPEC.md before starting any task.** Before committing, run lint, type checks, and tests (see below) and make sure they pass.

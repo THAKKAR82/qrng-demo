@@ -16,6 +16,8 @@
       "Bash(*pipeline.tasks refresh*)",
       "Bash(*pipeline/tasks.py collect-quantum*)",
       "Bash(*pipeline/tasks.py refresh*)",
+      "Bash(*pipeline.tasks live-server*)",
+      "Bash(*pipeline/tasks.py live-server*)",
       "Bash(git push *)",
       "Bash(git -C * push*)",
       "Bash(git -c * push*)"

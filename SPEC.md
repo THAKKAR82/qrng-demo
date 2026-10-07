@@ -59,7 +59,7 @@ These rules apply to all code, copy, charts, notebook text, and presenter notes.
 
 1. **Never present simulator or synthetic output as quantum hardware output.** Synthetic data must be labelled synthetic everywhere it appears: file metadata, notebook output, every chart title, and a persistent on-screen banner in the UI.
 2. **Never claim quantum bits have higher Shannon entropy.** They don't; with readout bias, their Shannon entropy is usually slightly *lower*. The claim is about predictability only.
-3. **Every on-screen number and every comparative phrase comes from the data**, never from assumptions. Copy is written as templates filled from `results.json` (or `demo.json`, which the same analysis code produces). Words such as "much more" or "slightly" are chosen by rules in the analysis code, applied to measured values.
+3. **Every on-screen number and every comparative phrase comes from the data**, never from assumptions. Copy is written as templates filled from `results.json` (or `demo.json`, which the same analysis code produces). Words such as "much more" or "slightly" are chosen by rules in the analysis code, applied to measured values. The one other source is an optional live run (Section 6.4). Its numbers come from the live server's response, computed in Python by `pipeline.analysis`, and are always labelled as a live run. No comparative phrase is ever chosen for a live run.
 4. **The attacker never sees the classical seed**, only the outputs. The seed is never stored, logged, or returned.
 5. **If qubits are selected by readout error, say so on screen**, along with how many candidates they were picked from.
 6. **Hardware bias, if visible, is explained, never hidden or post-processed away.** No readout-error mitigation, no measurement twirling, no randomness extraction, and no debiasing is applied to the bits we report. The UI explains bias in plain language (the detector reads 0 slightly more easily than 1).
@@ -119,6 +119,8 @@ Neither JSON file ever contains any key, token, CRN, or instance name. Run folde
 
 `data/scratch/` is gitignored and holds temporary outputs (executed notebooks, experiments).
 
+`data/live/` is gitignored and holds live runs from the presenter's laptop (Section 6.4). It is never read by `export` or the notebook, and nothing in it replaces the main dataset.
+
 ## 6. IBM Quantum access and cost safety
 
 ### 6.1 Credentials
@@ -172,11 +174,51 @@ The dry run uses no account and no network access, and Claude may run it. It run
 
 The Sampler runs locally on Qiskit Aer (a dev dependency). With a fake backend as its mode, the Sampler builds an Aer simulator with the device's full noise model, including thermal relaxation, and that cannot simulate 100 qubits in memory. The dry run therefore gives the Sampler an `AerSimulator` built from `FakeFez` with the same target and that backend's readout and gate errors, but no thermal relaxation, using the stabilizer method. The default 100 × 2,000 run then takes about a second. Its output is simulated and is never kept; the dry-run record is labelled `source: "local_simulator_dry_run"` and `synthetic: true`.
 
+### 6.4 Live mode (`live-server`)
+
+An optional live run on slide 3 (Section 9.5, Machines), with the recorded run as fallback. It runs only on the presenter's laptop, through `python -m pipeline.tasks live-server`, which is **human only**, like `collect-quantum`. The live control never appears in the phone site (`build:web`), the single-file build (`build:demo`, opened under `file://`), or plain `npm run preview`.
+
+**Serving.** `live-server` serves the existing presenter build in `ui/dist/` and a small JSON API from the same origin. It never builds the app itself (`npm run build` does), and refuses to start if `ui/dist/index.html` is missing. It binds to `127.0.0.1` only. There is no option to bind to another interface, and it refuses to start if asked to (`--host`, `--bind`). The default port is 8765 (`--port N`). Because the QR codes come from the last build, it prints at startup whether the served build has `VITE_AUDIENCE_URL` set, and to what, or that it is unset. The build records the setting in a `<meta name="qrng-audience-url">` tag for this purpose.
+
+**Arming** at startup reuses the collector's code and safeguards from Section 6.3:
+
+1. It refuses to start without an interactive terminal (stdin a TTY).
+2. It loads the account by name, runs the Open Plan check (step 3), and runs the allowance check (step 4). The allowance must also cover every live run at its maximum execution time (3 × 30 s).
+3. It picks the backend (`--backend <name>`, otherwise the least busy; never a simulator) and the 10 qubits with the lowest readout error, then builds and transpiles the circuit once (steps 5 to 7).
+4. It shows the live configuration: backend, the 10 qubits and their readout errors, 200 shots per run (2,000 bits), at most 3 live runs in this server session, a `max_execution_time` of 30 s per run, and the remaining allowance. The human must type the backend name to arm.
+
+If a check fails, the account can't be loaded, or the human types anything else, the server still starts, **unarmed**. It serves the presenter app, and the health endpoint reports live mode unavailable. The terminal gets a short, redacted reason; the API never does.
+
+Each live run is one Sampler job (not a session) with the circuit, Sampler class, and explicit options of Section 5.2, except `default_shots` 200, `max_execution_time` 30, and the job tags `qrng-demo` and `live`. No mitigation, twirling, or debiasing, as always.
+
+**API.** All JSON, under `/api/live/`:
+
+| Request | What it does |
+|---|---|
+| `GET /api/live/health` | `armed`, `backend` (or `null`), `runs_remaining`, `max_runs`, `shots`, `n_qubits`. |
+| `POST /api/live/runs` | Starts a live run and returns its id at once; submission happens in the background. Refused when unarmed, when the cap is reached, or while another live run is still in progress. The request body is ignored: the client chooses nothing. |
+| `GET /api/live/runs/<id>` | The run's stage: `submitting`, `submitted` (with the job ID), `queued` (with seconds elapsed), `running`, `done`, or `failed` (with a short redacted reason). The job ID is included as soon as it exists. On `done` it also returns the bits (shot-major, packed like a pool in Section 7.1), shots, qubit count, physical qubits, the qubit selection method and candidate count (shown on screen, Section 4.5), per-qubit P(1), fraction of ones, Shannon entropy (pooled and per-qubit mean), the job ID, submit and completion times, and the QPU seconds the job reports. |
+
+The run cap counts every accepted start, whatever happens to that run. The server keeps watching a job after the app has given up on it, and saves it if it finishes. It never cancels a job. On shutdown it prints the job IDs of any live runs still in progress.
+
+**Saving.** Each finished live run is written to `data/live/<run_id>/` (with `run_id` as in Section 5.3): `quantum.npz` and `quantum.json` in the format of Section 5.3, with `"live": true` and no classical files. `data/live/` is gitignored and never read by `export` or the notebook, and `export` refuses any folder whose `quantum.json` says `live: true`.
+
+**Local server security.** Other websites open in the same browser must not be able to start IBM jobs.
+
+- At startup the server generates a random per-session token and embeds it in the presenter page it serves (`<meta name="qrng-live-token">`). Every API request must carry it in the `X-QRNG-Live-Token` header, compared in constant time. Requests without it, or with a wrong one, are rejected.
+- Every request, the page included, is rejected unless its `Host` header is exactly `127.0.0.1:<port>` or `localhost:<port>` (against DNS rebinding). A request whose `Origin` header is present but isn't the server's own origin (`http://` plus that `Host`) is rejected too.
+- No CORS headers at all. Each path answers only the methods it needs (GET and HEAD for the app's files, GET for health and run status, POST to start a run). Everything else, `OPTIONS` included, gets 405.
+- Pages are sent with `Cache-Control: no-store`, `X-Frame-Options: DENY`, a `frame-ancestors 'none'` content security policy, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`, so no other site can embed the page and trick a click.
+- Responses and errors never include credentials, CRNs, account names, or local file paths. Messages pass through the collector's redaction (Section 6.1), and every JSON response is checked with the export's secret scan (Section 7.1) before it is sent. A response that fails is replaced by a generic error.
+- The arming requirement and the run cap are enforced by the server, whatever the client sends.
+
+**In the app.** The presenter app looks for the token meta tag. With none (plain preview, `file://`), it makes no request and shows no live control. The single-file build doesn't contain the live code at all, and the phone site never imports slide code. With a token, the app asks the health endpoint once when it loads, and shows the control only if the server is armed with runs remaining. What the control does is in Section 9.5.
+
 ## 7. Analysis
 
 `analyze --run <run_id>` (or `--sample <name>`) reads a run folder and writes `results.json`. The notebook and the UI both use the functions in `pipeline/` for this; no analysis logic is duplicated in the notebook or in TypeScript.
 
-**One exception: display-only counting in the UI.** When the UI streams bits live from a pool (Section 7.1), it may compute, over the bits shown so far, only: the fraction of ones, the Shannon entropy h(p̂) of that fraction, and counts of matches (the score of a guessing round). These live in one file, `ui/src/lib/stats.ts`, are for display only, and are never written back or used to choose wording. A test (`tests/test_ui_stats.py`) runs that file under Node on the exported pool bits and checks its values against `pipeline.analysis` on the same bits. Everything else, including every interval, H∞, running curve, and comparative phrase, is precomputed in Python.
+**One exception: display-only counting in the UI.** When the UI streams bits live from a pool (Section 7.1), it may compute, over the bits shown so far, only: the fraction of ones, the Shannon entropy h(p̂) of that fraction, and counts of matches (the score of a guessing round). The same applies to the bits of a live run (Section 6.4) as the Machines panel streams them. These live in one file, `ui/src/lib/stats.ts`, are for display only, and are never written back or used to choose wording. A test (`tests/test_ui_stats.py`) runs that file under Node on the exported pool bits and checks its values against `pipeline.analysis` on the same bits. Everything else, including every interval, H∞, running curve, and comparative phrase, is precomputed in Python.
 
 `results.json` contains:
 
@@ -222,14 +264,14 @@ The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook 
 
 ## 9. Web app: presentation and audience
 
-`ui/` is a Vite + React + TypeScript app with no UI component library; charts are hand-written SVG and canvas. At build time it imports `ui/src/data/demo.json` (Section 7.1), exported from one run, so neither view needs a network or a server.
+`ui/` is a Vite + React + TypeScript app with no UI component library; charts are hand-written SVG and canvas. At build time it imports `ui/src/data/demo.json` (Section 7.1), exported from one run, so neither view needs a network or a server. The one exception is the optional live run on the presenter's laptop (Section 6.4). Without it, everything works as before.
 
 ### 9.1 A hybrid of a presentation and an app
 
 - **Presenter view** (the default). A slide deck shown on a projector: full-screen scenes on a fixed 16:9 stage, designed for 1920×1080 and identical in proportion at 1280×720. It opens on the first slide. Navigation with the arrow keys and a presentation clicker (PageUp/PageDown, Space), a subtle progress indicator, presenter notes toggled with N (hidden by default), fullscreen with F, and a large QR code overlay for latecomers toggled with Q (Q again or Escape closes it). A scene may have **steps**: "next" first reveals the scene's next step and only then moves on, and "back" from a scene's first step lands on the last step of the scene before. Some scenes contain interactive **panels** (Section 9.5).
 - **Phone version** (the audience's view). A phone-first page designed for portrait phones (390×844) that offers **only the games** (Section 9.6): no slides, no presenter notes, no panels from the talk, no primitives page, and none of the presenter keys. It is the whole of the `build:web` build (Section 9.2), served at the site root, and the same screens open in the presenter builds with `?view=audience`, for rehearsals.
 
-**Audience participation is in person.** People raise hands and call out guesses, and the presenter presses keys to reveal answers and results on the projector. There is no room, no real-time sync between devices, no audience vote counting, and no backend of any kind.
+**Audience participation is in person.** People raise hands and call out guesses, and the presenter presses keys to reveal answers and results on the projector. There is no room, no real-time sync between devices, no audience vote counting, and no backend for the audience of any kind. The only server is the optional live server on the presenter's laptop (Section 6.4), which binds to that laptop alone, so phones never reach it.
 
 **Phones use a separate static copy.** A QR code on screen points to a static hosted copy of the phone version (the `build:web` build). That copy is not connected to the presenter's app: it never follows the presenter's slide, sends nothing, and receives nothing. The UI never implies that phones are connected to the talk.
 
@@ -241,6 +283,7 @@ The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook 
 | `npm run preview` | Builds the production app into `ui/dist/` and serves it locally. **The primary way to present.** |
 | `npm run build:demo` | Fallback: one self-contained `index.html` with all JS, CSS, fonts, and data inlined, written to the repo-level `demo/index.html` (committed). It opens by double-clicking, under `file://`, with the network off. |
 | `npm run build:web` | The phone version only, as a static site in `ui/dist-web/` (gitignored) with its `index.html` at the root, so no `?view=audience` is needed. Its bundle contains no presenter code: no deck, slides, notes, presenter keys, talk panels, or primitives page. `npm run preview:web` serves it locally. |
+| `python -m pipeline.tasks live-server` | **Optional, presenter's laptop only, human only.** Serves the last `npm run build` from `ui/dist/` with the live-run API (Section 6.4). Build with the hosted `VITE_AUDIENCE_URL` first, because the server doesn't rebuild. |
 
 The tasks `ui-dev` and `ui-build` (Section 10) run the dev server and `build:demo`. Builds use relative URLs, and `ui/dist-web/` goes on any static host for phones; no server code is involved. The primitives page, which shows every reusable primitive rendered with real data from `demo.json`, opens with `#primitives` or `?primitives` (both work under `file://`) or the P key.
 
@@ -263,7 +306,7 @@ The slides, in order. Every slide has presenter notes.
 
 1. **Opening:** the title, plus a QR code and short URL inviting people to play along on their phones (Section 9.2). With no URL set, the title only.
 2. **Why randomness matters:** where unpredictable numbers are used (passwords and keys, lotteries, simulations, games), in plain words.
-3. **Meet the two machines:** the Machines panel.
+3. **Meet the two machines:** the Machines panel, with the optional live run when the app is served by an armed live server (Section 6.4). The notes say what to do if the live run falls back, and that its job may still finish on IBM.
 4. **Can you tell them apart?** The Tell-them-apart panel; a step reveals which is which, and a further step shows both Shannon gauges with the rule-chosen comparison phrase.
 5. **Guess the next bit:** the Guess game, with a choice of machine.
 6. **Enter the attacker:** the Guess game with the attacker row on; a step brings in the Attacker panel.
@@ -279,6 +322,7 @@ Presenter notes are in a panel toggled with the N key and hidden by default. If 
 Panels are the interactive parts of slides; the phone version does not use them. All numbers come from `demo.json`, apart from the display-only counts in Section 7.
 
 - **Machines.** Classical and quantum side by side (stacked on phones). "Generate bits" streams bits from each stream's pool, with a speed control; the bitmaps fill in live, and the fraction of ones and Shannon entropy of the bits shown so far update as bits arrive. When a pool runs out, generation stops and says "End of the recorded bits"; bits are never repeated or wrapped. The real run's backend, job ID, date, and qubit count are shown and labelled as the actual run (or as sample data when synthetic).
+  - **Live run** (only when served by an armed live server, Section 6.4). A "Run on real quantum hardware now" button. It is an ordinary button with no key of its own, so it can't clash with the deck's keys or M. Each stage is shown as it happens: sending, the job ID as soon as it exists, queued with the time elapsed, and running. When the run is done, the quantum machine switches to the fresh bits, labelled "Fresh from <backend>, <time>", with the live job's facts in place of the recorded run's. Both machines restart from their first bit and stream in step, the classical one from its pool as before. Streaming stops at the end of the fresh bits ("End of the fresh bits"). Secondary text says a live run is small (its bit count, from the response), so its numbers are noisy, and that the headline numbers come from the full run. After 120 seconds without a result, the panel says "IBM's queue is busy; showing the run from <date>". After any failure (the job fails, or the server can't be reached), it says "The live run didn't finish; showing the run from <date>". In both cases it keeps the recorded run. Live bits are used only by this panel.
 - **Tell them apart.** Two unlabelled bitmaps, in an order chosen at random for each session, and a reveal (the R key, a button, or the slide's next step). No vote counting.
 - **Guess game.** Rounds of "guess the next bit" against a chosen machine. The presenter presses 0 or 1 (keys or large buttons) for the room's guess; the true bit is revealed and a running score shows. An optional attacker row shows what the attacker guessed each round and its score alongside the room's. Each session starts at a random offset in the pool that leaves room for at least 200 rounds, and the game stops at the end of the pool.
 - **Attacker.** Choose a machine and launch. The observation phase is animated (624 numbers for classical, the training half for quantum), then the running-accuracy line replays with its 95% band. A toggle shows the cross-checks (each attacker on the other machine).
@@ -314,8 +358,9 @@ Everything runs through `python -m pipeline.tasks <task>`.
 | `build-demo --run <id>` | Exports one run (`export --run`) and then runs `ui-build`. | Anyone |
 | `check` | Runs ruff, mypy, pytest, and the UI lint and type check. | Anyone |
 | `refresh` | Runs `collect-quantum`, `analyze`, and `build-demo` in one go. | **Human only** |
+| `live-server [--port N] [--backend <name>]` | Serves `ui/dist/` with the live-run API on 127.0.0.1 (Section 6.4). It can submit real jobs. | **Human only** |
 
-`setup-check`, `make-sample`, `collect-classical`, `collect-quantum`, `export`, `notebook`, `ui-dev`, and `ui-build` exist so far. The others are added in later tasks.
+`setup-check`, `make-sample`, `collect-classical`, `collect-quantum`, `export`, `notebook`, `ui-dev`, `ui-build`, and `live-server` exist so far. The others are added in later tasks.
 
 ## 11. Engineering conventions
 
@@ -323,5 +368,5 @@ Everything runs through `python -m pipeline.tasks <task>`.
 - **Python:** 3.11 or newer. Use a plain `python -m venv .venv` and `pip`. Exact pins are in `requirements.txt` (runtime) and `requirements-dev.txt` (tools, plus the package in editable mode); `pyproject.toml` holds compatible ranges and tool configuration.
 - **Node:** both machines use the version in `.nvmrc` (26.3.0); `ui/package.json` requires 24 or newer. UI dependencies are pinned exactly in `ui/package.json`, with `ui/package-lock.json` committed. Install with `npm ci`. Playwright is a dev dependency used only by `ui/scripts/verify.mjs` for visual and offline checks; no run mode or task needs it. The one runtime dependency besides React is `qrcode-generator`, bundled into the build so the QR code needs no network. A few pure TypeScript modules (`ui/src/lib/stats.ts`, `ui/src/lib/pool.ts`) are also run directly by Node, using its built-in type stripping, from pytest (`tests/test_ui_stats.py`), so they use only erasable TypeScript syntax and import nothing from the browser.
 - **Quality checks:** ruff for linting and formatting, mypy in strict mode, and pytest. Pre-commit runs detect-secrets, ruff, mypy, and basic hygiene hooks.
-- **Tests never touch IBM Quantum.** Collector tests use a mocked `QiskitRuntimeService`; the Sampler is either mocked or the real client-side Sampler running locally on Aer (`qiskit-aer`, a dev dependency). They must cover refusal on a non-Open-Plan instance, refusal on low remaining allowance, the bit-order conversion, and that no CRN or token appears in output.
-- **Version control:** run folders, sample data, the notebook (outputs cleared), and `demo/index.html` are committed. `data/scratch/`, `scratch/`, `.env*`, and virtualenvs are not.
+- **Tests never touch IBM Quantum.** Collector tests use a mocked `QiskitRuntimeService`; the Sampler is either mocked or the real client-side Sampler running locally on Aer (`qiskit-aer`, a dev dependency). They must cover refusal on a non-Open-Plan instance, refusal on low remaining allowance, the bit-order conversion, and that no CRN or token appears in output. A shared test fixture makes constructing a real `QiskitRuntimeService`, or a Sampler on anything but a local Aer simulator, fail the test at once. Live-server tests run the server in-process on a random 127.0.0.1 port with a mocked service. They cover arming refusals, the run cap, the stages and failures, `data/live/` isolation from export, and every security rule in Section 6.4. The UI verifier checks the live control in armed, unarmed, and unreachable states by mocking the API in the browser, and checks that the control is absent from the phone site, the single-file build, and plain preview.
+- **Version control:** run folders, sample data, the notebook (outputs cleared), and `demo/index.html` are committed. `data/scratch/`, `data/live/`, `scratch/`, `.env*`, and virtualenvs are not.
