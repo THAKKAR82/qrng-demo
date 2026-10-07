@@ -45,6 +45,12 @@ export interface Pool {
   predictions: string
 }
 
+/** 64×64 images for the phone game, each from its own segment of the stream. */
+export interface Spot {
+  size: number
+  images: { start_bit: number; bits: string }[]
+}
+
 export interface Running {
   n_bits: number[]
   accuracy: number[]
@@ -112,6 +118,7 @@ export interface QuantumStream {
   qubits: QubitResult[]
   bitmap: Bitmap
   pool: Pool
+  spot: Spot
   attacker: Attacker
 }
 
@@ -123,6 +130,7 @@ export interface ClassicalStream {
   }
   bitmap: Bitmap
   pool: Pool
+  spot: Spot
   attacker: Attacker
 }
 

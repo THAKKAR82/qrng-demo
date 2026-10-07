@@ -1,3 +1,4 @@
+import itertools
 import json
 import re
 from pathlib import Path
@@ -195,6 +196,22 @@ def test_export_writes_valid_demo_without_secrets(tmp_path: Path) -> None:
     # The state-recovery attacker predicts every held-out classical bit.
     assert export.unpack_bits(c_pool["predictions"], 20_000).tolist() == c_pool_bits.tolist()
 
+    # Spot images: decode to the stream, never overlap each other or the pool.
+    for part, stream in ((q, bits.reshape(-1)), (c, c_stream)):
+        spot = part["spot"]
+        assert spot["size"] == 64
+        assert 1 <= len(spot["images"]) <= 10
+        starts = [image["start_bit"] for image in spot["images"]]
+        assert starts == sorted(starts)
+        assert all(b - a >= 4096 for a, b in itertools.pairwise(starts))
+        pool_start = part["pool"]["start_bit"]
+        pool_end = pool_start + part["pool"]["n_bits"]
+        for image in spot["images"]:
+            start = image["start_bit"]
+            assert start + 4096 <= pool_start or start >= pool_end
+            decoded = export.unpack_bits(image["bits"], 4096)
+            assert decoded.tolist() == stream[start : start + 4096].tolist()
+
     # Bitmaps are inside the training data here (16,384 <= 20,000 and 19,968 bits).
     assert q["bitmap"]["within_training"] is True
     assert c["bitmap"]["within_training"] is True
@@ -341,3 +358,21 @@ def test_export_cli_uses_latest_run(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert main(["export", "--run", "2026-10-06T013454Z_ibm_fez"]) == 0
     assert _validate(out)["metadata"]["run_folder"] == "2026-10-06T013454Z_ibm_fez"
     assert main(["export", "--run", "nope"]) == 1
+
+
+def test_spot_segments_spread_evenly_and_avoid_the_pool() -> None:
+    starts = export.spot_segments(200_000, (100_000, 120_000))
+    assert len(starts) == 10
+    assert len(set(starts)) == 10
+    for start in starts:
+        assert start + 4096 <= 100_000 or start >= 120_000
+        assert start + 4096 <= 200_000
+    assert starts[0] == 0
+    assert starts[-1] >= 190_000  # spread to the end, not bunched at the start
+
+
+def test_spot_segments_with_little_room() -> None:
+    # Only the tiles that fit outside the pool, however few.
+    assert export.spot_segments(40_000, (20_000, 40_000)) == [0, 4096, 8192, 12288]
+    assert export.spot_segments(4_000, (0, 0)) == []
+    assert export.spot_segments(10_000, (0, 0), count=10) == [0, 4096]

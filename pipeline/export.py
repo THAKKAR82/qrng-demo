@@ -45,6 +45,8 @@ DEMO_SCHEMA_VERSION = 2
 MAX_BYTES = 1_000_000
 BITMAP_SIZE = 128
 POOL_BITS = 20_000
+SPOT_SIZE = 64  # spot images are SPOT_SIZE x SPOT_SIZE bits
+SPOT_IMAGES = 10  # at most this many spot images per stream
 
 RUN_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{6}Z_[A-Za-z0-9_\-]+$")
 _REQUIRED_FILES = (runs.QUANTUM_NPZ, runs.QUANTUM_JSON, runs.CLASSICAL_NPZ, runs.CLASSICAL_JSON)
@@ -206,6 +208,37 @@ def _pool(stream: npt.NDArray[np.uint8], result: AttackResult, start_bit: int) -
     }
 
 
+def spot_segments(
+    n_bits: int, avoid: tuple[int, int], *, size: int = SPOT_SIZE, count: int = SPOT_IMAGES
+) -> list[int]:
+    """Start bits of up to ``count`` non-overlapping segments of ``size * size`` bits, spread
+    evenly through a stream of ``n_bits`` bits and never overlapping ``avoid`` (the pool's
+    ``[start, end)``). The stream outside ``avoid`` is cut into whole tiles in order, and
+    the chosen tiles are evenly spaced among them."""
+    length = size * size
+    low, high = avoid
+    tiles: list[int] = []
+    for span_start, span_end in ((0, low), (high, n_bits)):
+        tiles.extend(range(span_start, span_end - length + 1, length))
+    if len(tiles) <= count:
+        return tiles
+    picks = np.unique(np.rint(np.linspace(0, len(tiles) - 1, count)).astype(np.int64))
+    return [tiles[int(i)] for i in picks]
+
+
+def _spot(stream: npt.NDArray[np.uint8], pool: dict[str, Any]) -> dict[str, Any]:
+    """Images for the phone game "Spot the quantum machine" (SPEC.md, Section 9.6)."""
+    length = SPOT_SIZE * SPOT_SIZE
+    avoid = (pool["start_bit"], pool["start_bit"] + pool["n_bits"])
+    return {
+        "size": SPOT_SIZE,
+        "images": [
+            {"start_bit": start, "bits": pack_bits(stream[start : start + length])}
+            for start in spot_segments(int(stream.size), avoid)
+        ],
+    }
+
+
 def _bitmap(stream: npt.NDArray[np.uint8], result: AttackResult) -> dict[str, Any]:
     return {
         "size": BITMAP_SIZE,
@@ -263,6 +296,8 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
     per_qubit_entropy = per_qubit_shannon_entropy(q_bits)
     abs_bias = np.abs(bias.p_one - 0.5)
     worst = int(np.argmax(abs_bias))
+    q_pool = _pool(q_stream, q_attack, bias_attacker.split(shots) * n_qubits)
+    c_pool = _pool(c_stream, c_attack, c_attack.n_training_bits)
     c_entropy = shannon_entropy_per_bit(c_stream)
     q_entropy_mean = float(np.mean(per_qubit_entropy))
     copy = {
@@ -347,7 +382,8 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
             },
             "qubits": qubits,
             "bitmap": _bitmap(q_stream, q_attack),
-            "pool": _pool(q_stream, q_attack, bias_attacker.split(shots) * n_qubits),
+            "pool": q_pool,
+            "spot": _spot(q_stream, q_pool),
             "attacker": _attacker(q_attack),
         },
         "classical": {
@@ -355,7 +391,8 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
             "fraction_ones": _num(float(c_stream.mean())),
             "shannon_entropy": {"pooled": _num(c_entropy)},
             "bitmap": _bitmap(c_stream, c_attack),
-            "pool": _pool(c_stream, c_attack, c_attack.n_training_bits),
+            "pool": c_pool,
+            "spot": _spot(c_stream, c_pool),
             "attacker": _attacker(c_attack),
         },
         "cross_checks": {
@@ -379,25 +416,43 @@ def find_secret_like(text: str) -> list[str]:
 _BASE64_RE = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
 
 
+def _check_packed(text: Any, n_bits: int, where: str) -> str:
+    if not isinstance(text, str) or not _BASE64_RE.match(text):
+        raise ValueError(f"{where} is not plain base64")
+    if len(base64.b64decode(text, validate=True)) != -(-n_bits // 8):
+        raise ValueError(f"{where} does not hold {n_bits} bits")
+    return "<packed bits>"
+
+
 def scannable_text(demo: dict[str, Any]) -> str:
-    """The serialized export with each pool's packed bits replaced by a placeholder, for
-    the secret scan: base64 bits look token-like by chance. Each replaced field must first
-    be plain base64 that decodes to exactly the pool's bits, so nothing else can hide there.
+    """The serialized export with every packed-bits field (the pools and the spot images)
+    replaced by a placeholder, for the secret scan: base64 bits look token-like by chance.
+    Each replaced field must first be plain base64 that decodes to exactly the expected
+    number of bits, so nothing else can hide there.
     """
     shallow = dict(demo)
     for stream in ("quantum", "classical"):
-        if not isinstance(shallow.get(stream), dict) or "pool" not in shallow[stream]:
+        part = shallow.get(stream)
+        if not isinstance(part, dict):
             continue
-        pool = dict(shallow[stream]["pool"])
-        n_bits = pool["n_bits"]
-        for field in ("bits", "predictions"):
-            text = pool[field]
-            if not isinstance(text, str) or not _BASE64_RE.match(text):
-                raise ValueError(f"{stream}.pool.{field} is not plain base64")
-            if len(base64.b64decode(text, validate=True)) != -(-n_bits // 8):
-                raise ValueError(f"{stream}.pool.{field} does not hold {n_bits} bits")
-            pool[field] = "<packed bits>"
-        shallow[stream] = {**shallow[stream], "pool": pool}
+        part = dict(part)
+        if "pool" in part:
+            pool = dict(part["pool"])
+            for field in ("bits", "predictions"):
+                pool[field] = _check_packed(pool[field], pool["n_bits"], f"{stream}.pool.{field}")
+            part["pool"] = pool
+        if "spot" in part:
+            spot = dict(part["spot"])
+            n = spot["size"] * spot["size"]
+            spot["images"] = [
+                {
+                    **image,
+                    "bits": _check_packed(image["bits"], n, f"{stream}.spot.images[{i}].bits"),
+                }
+                for i, image in enumerate(spot["images"])
+            ]
+            part["spot"] = spot
+        shallow[stream] = part
     return json.dumps(shallow, indent=1, allow_nan=False)
 
 

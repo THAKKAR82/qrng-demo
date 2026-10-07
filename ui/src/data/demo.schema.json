@@ -134,6 +134,7 @@
         "qubits",
         "bitmap",
         "pool",
+        "spot",
         "attacker"
       ],
       "properties": {
@@ -355,6 +356,9 @@
         },
         "pool": {
           "$ref": "#/$defs/pool"
+        },
+        "spot": {
+          "$ref": "#/$defs/spot"
         }
       }
     },
@@ -367,6 +371,7 @@
         "shannon_entropy",
         "bitmap",
         "pool",
+        "spot",
         "attacker"
       ],
       "properties": {
@@ -397,6 +402,9 @@
         },
         "pool": {
           "$ref": "#/$defs/pool"
+        },
+        "spot": {
+          "$ref": "#/$defs/spot"
         }
       }
     },
@@ -733,6 +741,40 @@
           "maxItems": 500,
           "items": {
             "$ref": "#/$defs/probability"
+          }
+        }
+      }
+    },
+    "spot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "size",
+        "images"
+      ],
+      "properties": {
+        "size": {
+          "const": 64
+        },
+        "images": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start_bit",
+              "bits"
+            ],
+            "properties": {
+              "start_bit": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bits": {
+                "$ref": "#/$defs/packed_bits"
+              }
+            }
           }
         }
       }

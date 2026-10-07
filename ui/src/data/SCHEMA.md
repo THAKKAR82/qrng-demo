@@ -70,6 +70,7 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `qubits` | array | One entry per column, **every qubit included** (see below). |
 | `bitmap` | bitmap | First 16,384 bits of the stream. |
 | `pool` | pool | 20,000 held-out bits, right after the training half, with the attacker's predictions. |
+| `spot` | spot | 64×64 images for the phone game (below). |
 | `attacker` | attacker | The per-qubit bias attacker. |
 
 ### `quantum.bias_tests`
@@ -104,6 +105,7 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `shannon_entropy.pooled` | bits | h(p̂). |
 | `bitmap` | bitmap | First 16,384 bits of the stream. |
 | `pool` | pool | 20,000 held-out bits, right after the 624 observed words, with the attacker's predictions. |
+| `spot` | spot | 64×64 images for the phone game (below). |
 | `attacker` | attacker | The Mersenne Twister state-recovery attacker. |
 
 ## `cross_checks`
@@ -131,6 +133,8 @@ Each has `name`, `accuracy`, `ci_low`, `ci_high` (95% Wilson), `n_predicted`, `n
 | `predictions` | The attacker's guess for each pool bit, packed the same way. |
 
 The UI reads each pool bit at most once per pass and never repeats or wraps the pool.
+
+**spot:** images for the phone game "Spot the quantum machine" (SPEC.md, Section 9.6). `size` is 64, and `images` holds up to 10 entries, each with `start_bit` (index into the flattened stream) and `bits` (`size × size` consecutive bits from there, packed like the pool). The segments never overlap each other or the pool and are spread evenly through the rest of the stream: the stream outside the pool is cut into whole 4,096-bit tiles in order, and the chosen tiles are evenly spaced among them. Row `r`, column `c` of an image is bit `start_bit + 64·r + c`.
 
 **attacker:**
 
