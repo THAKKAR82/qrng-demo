@@ -57,7 +57,7 @@
 
 .progress__count {
   font-size: var(--text-xs);
-  line-height: 1;
+  line-height: var(--leading-none);
 }
 
 /* ---- Presenter notes: a panel over the lower part of the stage -------------- */

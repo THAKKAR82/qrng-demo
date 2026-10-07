@@ -17,7 +17,7 @@
 .primitives__caption {
   font-size: var(--text-lead);
   font-weight: var(--weight-medium);
-  line-height: 1.2;
+  line-height: var(--leading-snug);
 }
 
 .primitives__bitmap {
@@ -83,7 +83,7 @@
 
 .tokens__sample {
   overflow: hidden;
-  line-height: 1.15;
+  line-height: var(--leading-heading);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -125,7 +125,7 @@
 .tokens__colour-name {
   font-size: var(--text-h3);
   font-weight: var(--weight-semibold);
-  line-height: 1.1;
+  line-height: var(--leading-tight);
 }
 
 .tokens__colour-role {

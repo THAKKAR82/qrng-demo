@@ -88,6 +88,37 @@ def wilson_interval(successes: int, n: int, z: float = Z_95) -> tuple[float, flo
     return low, high
 
 
+@dataclass(frozen=True)
+class ChanceRange:
+    """Scores a pure guesser lands in, in ``n`` rounds, with probability ``probability``."""
+
+    rounds: int
+    low: int
+    high: int
+    coverage: float
+    probability: float
+
+
+def chance_range(rounds: int, coverage: float = 0.95) -> ChanceRange:
+    """The narrowest score range, symmetric about half, holding at least ``coverage``.
+
+    A pure guesser is right on each round with probability 1/2, independently, so the score
+    is Binomial(rounds, 1/2). The range ``[k, rounds - k]`` is widened from the middle until
+    the exact binomial probability inside it reaches ``coverage``.
+    """
+    if rounds <= 0:
+        raise ValueError(f"rounds must be positive, got {rounds}")
+    if not 0.0 < coverage < 1.0:
+        raise ValueError(f"coverage must be between 0 and 1, got {coverage!r}")
+    total = 2**rounds
+    for low in range(rounds // 2, -1, -1):
+        high = rounds - low
+        inside = sum(math.comb(rounds, k) for k in range(low, high + 1))
+        if inside / total >= coverage:
+            return ChanceRange(rounds, low, high, coverage, inside / total)
+    raise AssertionError("unreachable: the full range has probability 1")
+
+
 def bias_per_qubit(bits_2d: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """P(1) for each column of a ``(shots, qubits)`` array."""
     p_one: npt.NDArray[np.float64] = _as_bits_2d(bits_2d).mean(axis=0, dtype=np.float64)

@@ -1,0 +1,6 @@
+{
+  "_comment": "The hosted phone site (SPEC.md, Section 9.2). Set project and url from what Cloudflare Pages reports when the project is created (DEPLOY.md), then run rebuild. url is the host's default address, with the trailing slash.",
+  "host": "cloudflare-pages",
+  "project": "CHOOSE-A-NAME",
+  "url": "https://CHOOSE-A-NAME.pages.dev/"
+}

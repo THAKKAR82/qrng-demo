@@ -38,7 +38,6 @@ interface GuessGamePanelProps extends PanelBaseProps {
  * and stops at its end.
  */
 export function GuessGamePanel({
-  placement = 'inline',
   className,
   hideHeader,
   delay,
@@ -95,14 +94,13 @@ export function GuessGamePanel({
 
   return (
     <Panel
-      placement={placement}
       className={className}
       hideHeader={hideHeader}
       delay={delay}
       title={`Guess the next bit: ${MACHINE_NAME[machine].toLowerCase()}`}
       description={
         <>
-          {placement === 'standalone' ? 'Tap' : 'Call out'} 0 or 1. Each round shows a bit the machine really made, one the attacker never saw. The game starts at
+          Call out 0 or 1. Each round shows a bit the machine really made, one the attacker never saw. The game starts at
           a random point and has room for at least <Num>{count(GUESS_ROUNDS)}</Num> rounds.
         </>
       }

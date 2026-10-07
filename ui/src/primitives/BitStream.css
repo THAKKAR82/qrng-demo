@@ -8,7 +8,7 @@
   row-gap: var(--space-2);
   font-size: var(--text-lead);
   font-weight: var(--weight-medium);
-  line-height: 1.2;
+  line-height: var(--leading-snug);
 }
 
 .bit-stream--classical {

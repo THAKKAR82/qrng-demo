@@ -8,7 +8,7 @@
   color: var(--color-flag);
   font-size: var(--text-body);
   font-weight: var(--weight-semibold);
-  line-height: 1.3;
+  line-height: var(--leading-snug);
 }
 
 .synthetic-label--stage {

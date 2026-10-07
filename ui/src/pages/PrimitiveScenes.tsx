@@ -96,7 +96,7 @@ export function TokensScene() {
               className={`tokens__sample${'mono' in t ? ' num' : ''}`}
               style={{ fontSize: `var(--text-${t.token})` }}
             >
-              {'mono' in t ? fixed(quantum.attacker.min_entropy, 3) : meta.backend ?? meta.run_folder}
+              {'mono' in t ? fixed(quantum.attacker.min_entropy, 3) : 'Can you predict a random bit?'}
             </span>
           </div>
         ))}

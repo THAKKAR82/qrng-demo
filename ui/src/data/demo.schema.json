@@ -13,11 +13,12 @@
     "classical",
     "cross_checks",
     "layout",
-    "copy"
+    "copy",
+    "games"
   ],
   "properties": {
     "schema_version": {
-      "const": 2
+      "const": 3
     },
     "generated_utc": {
       "$ref": "#/$defs/utc"
@@ -521,6 +522,60 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+        }
+      }
+    },
+    "games": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "beat"
+      ],
+      "properties": {
+        "beat": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rounds",
+            "chance_range"
+          ],
+          "properties": {
+            "rounds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "chance_range": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "low",
+                "high",
+                "coverage",
+                "probability"
+              ],
+              "properties": {
+                "low": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "high": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "coverage": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "exclusiveMaximum": 1
+                },
+                "probability": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            }
+          }
         }
       }
     }

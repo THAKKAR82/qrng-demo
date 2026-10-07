@@ -216,6 +216,7 @@ def live_summary(bits: npt.NDArray[np.uint8], meta: dict[str, Any]) -> dict[str,
     job = meta["job"]
     return {
         "backend": str(meta["backend"]["name"]),
+        "backend_num_qubits": int(meta["backend"]["num_qubits"]),
         "job_id": str(job["job_id"]),
         "shots": int(bits.shape[0]),
         "n_qubits": int(bits.shape[1]),
@@ -272,6 +273,7 @@ class LiveController:
             return {
                 "armed": False,
                 "backend": None,
+                "backend_num_qubits": None,
                 "runs_remaining": 0,
                 "max_runs": 0,
                 "shots": None,
@@ -280,6 +282,7 @@ class LiveController:
         return {
             "armed": True,
             "backend": config.submission.backend_name,
+            "backend_num_qubits": config.submission.backend_qubits,
             "runs_remaining": max(0, config.max_runs - started),
             "max_runs": config.max_runs,
             "shots": config.submission.shots,

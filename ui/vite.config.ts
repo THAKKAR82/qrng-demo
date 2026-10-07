@@ -11,8 +11,9 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 //                      with the network off.
 //   npm run build:web  `--mode web`: the phone version only, from web/index.html, as a static
 //                      site in ui/dist-web/ with index.html at its root. No presenter code is
-//                      imported from that entry, so none is bundled. `npm run preview:web`
-//                      serves it.
+//                      imported from that entry, so none is bundled. web/public/ adds the
+//                      host's _headers (CSP and other security headers), favicon.svg, and
+//                      404.html. `npm run preview:web` serves it.
 //
 // __QRNG_LIVE__ is true only in the presenter builds that python -m pipeline.tasks live-server
 // can serve (dev and `npm run build` into ui/dist/). In the demo and web builds it is false, so
@@ -23,8 +24,9 @@ const envDir = fileURLToPath(new URL('.', import.meta.url))
 
 /**
  * Records the build's VITE_AUDIENCE_URL in a meta tag, so live-server can say at startup
- * which address the QR codes in the build it serves point to. The app itself reads the
- * setting from import.meta.env as before.
+ * which address the QR codes in the build it serves point to, and check-site can confirm
+ * the presenter and single-file builds point to the hosted phone site. The app itself
+ * reads the setting from import.meta.env as before.
  */
 function audienceUrlMeta(mode: string): Plugin {
   const value = loadEnv(mode, envDir, 'VITE_').VITE_AUDIENCE_URL ?? ''
@@ -48,6 +50,11 @@ export default defineConfig(({ mode }) => {
       build: {
         outDir: fileURLToPath(new URL('./dist-web', import.meta.url)),
         emptyOutDir: true,
+        // The public site ships no source maps (SPEC.md, Section 9.7).
+        sourcemap: false,
+        // The polyfill would fetch() preloads, which the site's CSP (connect-src 'none')
+        // forbids; every browser the audience uses supports modulepreload natively.
+        modulePreload: { polyfill: false },
       },
     }
   }
@@ -57,7 +64,7 @@ export default defineConfig(({ mode }) => {
     base: './',
     define: { __QRNG_LIVE__: demo ? 'false' : 'true' },
     plugins: demo
-      ? [react(), viteSingleFile({ removeViteModuleLoader: true })]
+      ? [react(), audienceUrlMeta(mode), viteSingleFile({ removeViteModuleLoader: true })]
       : [react(), audienceUrlMeta(mode)],
     build: demo
       ? {

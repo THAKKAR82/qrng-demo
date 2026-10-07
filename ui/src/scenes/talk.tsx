@@ -6,7 +6,7 @@ import { demo, isSynthetic } from '../data/demo'
 import type { SceneDef } from '../deck/types'
 import { audienceUrl } from '../lib/audienceUrl'
 import { CrossCheckNotes, PhoneInvite, RunNote } from './parts'
-import { count, fixed, percent, percentRange, utcDate } from '../lib/format'
+import { count, fixed, ibmQuantumComputer, percent, percentRange, utcDate } from '../lib/format'
 import { revealDelay } from '../lib/motion'
 import { AttackerPanel } from '../panels/AttackerPanel'
 import { GuessGamePanel } from '../panels/GuessGamePanel'
@@ -32,6 +32,7 @@ export const talkScenes: readonly SceneDef[] = [
           Welcome. One question for the next few minutes: can you predict a random bit? We'll compare two machines, one
           of them a real quantum computer.
         </p>
+        <p>Ask: hands up if you think a computer can make a truly random number.</p>
         {url === null ? (
           <p>No audience URL was set at build time (VITE_AUDIENCE_URL), so there is no QR code.</p>
         ) : (
@@ -66,7 +67,7 @@ export const talkScenes: readonly SceneDef[] = [
           Keep it concrete. Every example depends on the same thing: nobody can guess the next number, not even someone who
           has watched all the earlier ones.
         </p>
-        <p>Ask: who here has used a password generator, a lottery, or shuffled a playlist?</p>
+        <p>Ask: hands up if you've used a password generator, bought a lottery ticket, or shuffled a playlist this week.</p>
       </>
     ),
     render: () => (
@@ -97,20 +98,24 @@ export const talkScenes: readonly SceneDef[] = [
       <>
         <p>
           Press Generate bits. Left: Python's built-in random number generator, the one most programs reach for. Right: bits
-          from measuring qubits on a real quantum computer. Both are playing back bits they really made; nothing is
-          generated live here.
+          from measuring qubits on a real quantum computer. Both play back bits they really made; unless you use the live
+          run below, nothing is generated live here.
         </p>
         <p>
           Point at the numbers: both sit near half 1s, and the ordinary randomness score is close to 1 for both.
         </p>
         {__QRNG_LIVE__ && <LiveNotes />}
         <RunNote />
+        <p>
+          If someone asks how we know it really ran: the job ID above is IBM's own record of the job, visible in the IBM
+          Quantum dashboard of the account that ran it, and the notebook shows every bit it returned.
+        </p>
       </>
     ),
     render: () => (
       <Scene
         title="Meet the two machines"
-        lede="Each square is one bit: coloured for 1, blank for 0. Both machines play back bits they really made."
+        lede="Each square is one bit: coloured for 1, blank for 0."
       >
         <MachinesPanel className="talk__wide" hideHeader keyboard />
       </Scene>
@@ -153,8 +158,8 @@ export const talkScenes: readonly SceneDef[] = [
     notes: (
       <>
         <p>
-          Let the room call out 0 or 1; press 0 or 1 for the majority. M switches machines. Expect the room to hover
-          around half right on both: people can't predict either one.
+          Say: everyone shout 0 or 1! Press 0 or 1 for whichever was louder. M switches machines. Expect the room to
+          hover around half right on both: people can't predict either one.
         </p>
         <p>Each machine starts at a random point in bits the attacker never saw, and never repeats a bit.</p>
       </>
@@ -175,11 +180,12 @@ export const talkScenes: readonly SceneDef[] = [
     notes: (
       <>
         <p>
-          Step 1: play a few rounds with the attacker row on, on both machines (M switches), and compare its score with the
-          room's. Over all the unseen bits: {copy.classical_attack} {copy.quantum_attack}
+          Step 1: play a few rounds with the attacker row on, on both machines (M switches): everyone shouts 0 or 1 again,
+          and compare the attacker's score with the room's. Over all the unseen bits: {copy.classical_attack}{' '}
+          {copy.quantum_attack}
         </p>
         <p>
-          Step 2: launch the attacker on each machine. On the classical machine it scored{' '}
+          Step 2 (→): press Launch on each machine. On the classical machine it scored{' '}
           <Num>{percent(classical.attacker.accuracy, 2)}</Num> after watching{' '}
           <Num>{count(classical.attacker.n_training_bits)}</Num> bits; on the quantum machine,{' '}
           <Num>{percent(quantum.attacker.accuracy, 2)}</Num> (95% <Num>{percentRange(quantum.attacker.ci_low, quantum.attacker.ci_high, 2)}</Num>).
@@ -203,7 +209,7 @@ export const talkScenes: readonly SceneDef[] = [
         {step === 0 ? (
           <GuessGamePanel className="talk__wide" hideHeader keyboard showAttacker />
         ) : (
-          <AttackerPanel className="talk__wide" hideHeader keyboard chartWidth={1040} chartHeight={460} />
+          <AttackerPanel className="talk__wide" hideHeader keyboard chartWidth={1040} chartHeight={420} />
         )}
       </Scene>
     ),
@@ -239,8 +245,12 @@ export const talkScenes: readonly SceneDef[] = [
     notes: (
       <>
         <p>
-          Give people a couple of minutes. The phone version has two games: Spot the quantum machine (five pairs of
-          pictures) and Beat the attacker (twenty guesses against an attacker on either machine).
+          Say: phones out, scan the code. Give people a couple of minutes. On phones the classical machine is called the
+          "ordinary formula". The phone version has two games: Spot the quantum machine (five pairs of pictures) and Beat
+          the attacker (<Num>{count(demo.games.beat.rounds)}</Num> guesses against an attacker on either
+          machine). Its end screen says that a short game swings a lot by luck: pure guessing lands between{' '}
+          <Num>{count(demo.games.beat.chance_range.low)}</Num> and <Num>{count(demo.games.beat.chance_range.high)}</Num> out
+          of <Num>{count(demo.games.beat.rounds)}</Num> in most games.
         </p>
         {url === null ? (
           <p>No audience URL was set at build time (VITE_AUDIENCE_URL), so there is no QR code on this slide.</p>
@@ -286,7 +296,7 @@ export const talkScenes: readonly SceneDef[] = [
                 <>This copy of the demo shows sample data, not quantum hardware output.</>
               ) : (
                 <>
-                  These bits came from IBM Quantum <Num>{meta.backend}</Num>
+                  These bits came from {ibmQuantumComputer(meta.backend_num_qubits)}
                   {meta.date_utc !== null && <> on {utcDate(meta.date_utc)}</>}.
                 </>
               )}

@@ -42,7 +42,7 @@ const RECENT_BITS = 16
  * run. Its fresh bits then play on the quantum machine, from the start and in step with
  * the classical machine, until they run out.
  */
-export function MachinesPanel({ placement = 'inline', className, hideHeader, delay }: PanelBaseProps) {
+export function MachinesPanel({ className, hideHeader, delay }: PanelBaseProps) {
   const live = useLiveRun()
   const fresh = __QRNG_LIVE__ ? live.result : null
   const quantumBits = fresh !== null ? fresh.bits : pools.quantum.bits
@@ -108,7 +108,6 @@ export function MachinesPanel({ placement = 'inline', className, hideHeader, del
 
   return (
     <Panel
-      placement={placement}
       className={className}
       hideHeader={hideHeader}
       delay={delay}
@@ -199,7 +198,7 @@ function Machine({ source, bits: stream, position, shape, facts }: MachineProps)
           </div>
           <div>
             <dt>
-              Ordinary randomness score <span className="term">Shannon entropy, bits per bit (1 = perfectly balanced)</span>
+              Ordinary randomness score <span className="term">Shannon entropy (1 = perfectly balanced)</span>
             </dt>
             <dd className={`num is-${source}`}>{position === 0 ? '–' : fixed(entropy, 4)}</dd>
           </div>

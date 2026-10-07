@@ -14,7 +14,7 @@ export const demo: DemoData = raw
 const isPair = (v: readonly number[]) => v.length === 2 && v.every(Number.isInteger)
 const layout = demo.layout
 const problems = [
-  demo.schema_version === 2 || 'schema_version must be 2',
+  demo.schema_version === 3 || 'schema_version must be 3',
   ['ibm_quantum_hardware', 'synthetic'].includes(demo.metadata.source) || 'unknown source',
   [demo.quantum, demo.classical].every((s) => s.pool.start_bit >= s.attacker.n_training_bits) ||
     'a pool starts inside the training data',

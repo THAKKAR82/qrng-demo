@@ -4,7 +4,7 @@
 // keys or M.
 
 import { demo, isSynthetic } from '../data/demo'
-import { count, utcDate } from '../lib/format'
+import { count, ibmQuantumComputer, utcDate } from '../lib/format'
 import { startLiveRun, useLiveRun, type LiveResult, type LiveView } from '../lib/live'
 import { Num } from '../primitives/Num'
 import { ActionButton } from './shared'
@@ -34,50 +34,32 @@ export function LiveRunButton({ live }: { live: LiveView }) {
   )
 }
 
-function JobId({ id }: { id: string | null }) {
-  return id === null ? null : (
-    <>
-      {' '}
-      Job <Num>{id}</Num>.
-    </>
-  )
-}
-
-/** What the live run is doing, one stage at a time, with the job ID as soon as it exists. */
+/**
+ * What the live run is doing, one stage at a time. The screen names the machine by its size
+ * and never shows the job ID or backend name (SPEC.md, Section 4.8); the notes have them.
+ */
 export function LiveRunStatus({ live }: { live: LiveView }) {
   if (!live.available) {
     return null
   }
   let line = null
   if (live.phase === 'running') {
-    const backend = live.health?.backend ?? 'IBM Quantum'
     switch (live.stage) {
       case 'submitting':
-        line = <>Sending a job to IBM Quantum {backend}.</>
+        line = <>Sending a job to {ibmQuantumComputer(live.health?.backend_num_qubits ?? null)}.</>
         break
       case 'submitted':
-        line = (
-          <>
-            Sent to {backend}, waiting for IBM's queue.
-            <JobId id={live.jobId} />
-          </>
-        )
+        line = <>Sent. Waiting for IBM's queue.</>
         break
       case 'queued':
         line = (
           <>
             Waiting in IBM's queue{live.elapsedSeconds !== null && <>: <Num>{clock(live.elapsedSeconds)}</Num></>}.
-            <JobId id={live.jobId} />
           </>
         )
         break
       case 'running':
-        line = (
-          <>
-            Running on {backend} now.
-            <JobId id={live.jobId} />
-          </>
-        )
+        line = <>Running on the quantum computer now.</>
         break
       default:
         line = null
@@ -85,7 +67,7 @@ export function LiveRunStatus({ live }: { live: LiveView }) {
   } else if (live.phase === 'done' && live.result !== null) {
     line = (
       <>
-        Fresh bits from {live.result.backend} are playing on the quantum machine.{' '}
+        Fresh bits from {ibmQuantumComputer(live.result.backendQubits)} are playing on the quantum machine.{' '}
         <span className="term">
           A live run is small (<Num>{count(live.result.nBits)}</Num> bits), so its numbers are noisy; the headline numbers
           come from the full run.
@@ -99,9 +81,7 @@ export function LiveRunStatus({ live }: { live: LiveView }) {
         {live.jobId !== null && (
           <>
             {' '}
-            <span className="term">
-              Job <Num>{live.jobId}</Num> may still finish on IBM.
-            </span>
+            <span className="term">The job may still finish on IBM.</span>
           </>
         )}
       </>
@@ -128,9 +108,9 @@ export function LiveRunFacts({ result }: { result: LiveResult }) {
   return (
     <p className="run-facts">
       <span className="run-facts__label">
-        Fresh from <span className="num">{result.backend}</span>, {utcDate(result.completedUtc)}:
+        Fresh from {ibmQuantumComputer(result.backendQubits)}, {utcDate(result.completedUtc)}:
       </span>{' '}
-      job <span className="num">{result.jobId}</span>, <span className="num">{count(result.nQubits)}</span> qubits ×{' '}
+      <span className="num">{count(result.nQubits)}</span> qubits ×{' '}
       <span className="num">{count(result.shots)}</span> shots
       {result.selectedFrom !== null && (
         <>
@@ -145,26 +125,46 @@ export function LiveRunFacts({ result }: { result: LiveResult }) {
   )
 }
 
-/** Presenter notes for slide 3, shown only when this page is served by an armed live server. */
+/**
+ * Presenter notes for slide 3, shown only when this page is served by an armed live server.
+ * They carry what the screen leaves out (SPEC.md, Section 4.8): the backend and, as soon as
+ * it exists, the live job's ID, so the presenter can answer "did it really run?".
+ */
 export function LiveNotes() {
   const live = useLiveRun()
   if (!live.available) {
     return null
   }
   const health = live.health
+  const backend = live.result?.backend ?? health?.backend ?? null
   return (
-    <p>
-      Live run (the live server is armed on <Num>{health?.backend ?? 'IBM Quantum'}</Num>
-      {health !== null && health.n_qubits !== null && health.shots !== null && (
-        <>
-          , <Num>{count(health.n_qubits)}</Num> qubits × <Num>{count(health.shots)}</Num> shots per run,{' '}
-          <Num>{count(health.runs_remaining)}</Num> left
-        </>
+    <>
+      <p>
+        Live run (the live server is armed on <Num>{health?.backend ?? 'IBM Quantum'}</Num>
+        {health !== null && health.n_qubits !== null && health.shots !== null && (
+          <>
+            , <Num>{count(health.n_qubits)}</Num> qubits × <Num>{count(health.shots)}</Num> shots per run,{' '}
+            <Num>{count(health.runs_remaining)}</Num> left
+          </>
+        )}
+        ): the button under the machines sends one small job and shows each stage. If the panel falls back after two
+        minutes, or the run fails, carry on with the recorded run. The job may still finish on IBM; the server saves it on
+        this laptop if it does, but the slide keeps the recorded run. Live numbers are noisy: quote the headline numbers
+        from the full run.
+      </p>
+      {live.jobId !== null && (
+        <p>
+          This live run: job <Num>{live.jobId}</Num>
+          {backend !== null && (
+            <>
+              {' '}
+              on <Num>{backend}</Num>
+            </>
+          )}
+          {live.result !== null && <>, completed {utcDate(live.result.completedUtc)}</>}. The screen shows neither; read
+          them out if someone asks how we know it ran.
+        </p>
       )}
-      ): the button under the machines sends one small job and shows each stage with its job ID. If the panel falls back
-      after two minutes, or the run fails, carry on with the recorded run. The job may still finish on IBM; the server
-      saves it on this laptop if it does, but the slide keeps the recorded run. Live numbers are noisy: quote the
-      headline numbers from the full run.
-    </p>
+    </>
   )
 }

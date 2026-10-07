@@ -178,6 +178,16 @@ export interface DemoData {
   }
   layout: DeviceLayout | null
   copy: Copy
+  games: Games
+}
+
+/** Settings the phone games quote on screen, computed in Python (SPEC.md, Section 4.9). */
+export interface Games {
+  beat: {
+    rounds: number
+    /** Scores a pure guesser lands in with probability `probability` (at least `coverage`). */
+    chance_range: { low: number; high: number; coverage: number; probability: number }
+  }
 }
 
 /** The two sources. Every colour, label, and chart series is keyed by one of these. */

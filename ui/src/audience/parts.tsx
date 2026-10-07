@@ -3,7 +3,7 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { demo, isSynthetic } from '../data/demo'
 import type { Source } from '../data/types'
-import { utcDate } from '../lib/format'
+import { ibmQuantumComputer, utcDate } from '../lib/format'
 
 interface PhoneButtonProps {
   children: ReactNode
@@ -46,7 +46,7 @@ export function PhoneScreen({ title, children, id }: { title: ReactNode; childre
   )
 }
 
-/** The real run behind the quantum bits, in small text; or a sample-data note. */
+/** The real run behind the quantum bits, in small text (SPEC.md, Section 4.8); or a sample-data note. */
 export function RunFacts() {
   const meta = demo.metadata
   if (isSynthetic || meta.backend === null) {
@@ -59,12 +59,7 @@ export function RunFacts() {
   }
   return (
     <p className="phone-small">
-      Quantum bits from IBM Quantum <span className="num">{meta.backend}</span>
-      {meta.job_id !== null && (
-        <>
-          , job <span className="num">{meta.job_id}</span>
-        </>
-      )}
+      The quantum bits: run on {ibmQuantumComputer(meta.backend_num_qubits)}
       {meta.date_utc !== null && <>, {utcDate(meta.date_utc)}</>}.
     </p>
   )

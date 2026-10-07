@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -26,6 +28,9 @@ from pathlib import Path
 from pipeline.paths import DEMO_DIR, REPO_ROOT, RUNS_DIR, SAMPLE_DIR, UI_DIR
 
 MIN_PYTHON = (3, 11)
+VENV_DIR = REPO_ROOT / ".venv"
+# Tools the checks run by name; each must come from .venv, not another environment.
+VENV_TOOLS = ("pytest", "mypy", "ruff")
 _PIN_RE = re.compile(r"^\s*([A-Za-z0-9_.\-]+)\s*==\s*([^\s;#]+)")
 
 
@@ -114,16 +119,77 @@ def _print_rows(title: str, rows: Sequence[VersionRow]) -> None:
         )
 
 
+def python_version_problem(version: tuple[int, ...] = tuple(sys.version_info[:3])) -> str | None:
+    """Why this Python is too old for the project, or None if it is new enough."""
+    if tuple(version[:2]) >= MIN_PYTHON:
+        return None
+    found = ".".join(str(v) for v in version[:3])
+    return (
+        f"Python {found} is too old: this project needs 3.11 or newer. On macOS, bare "
+        "python3 is often Apple's 3.9. Recreate the venv with an explicit interpreter: "
+        "rm -rf .venv && python3.13 -m venv .venv"
+    )
+
+
+def shadowed_tools(
+    venv_bin: Path = VENV_DIR / "bin", which: Callable[[str], str | None] = shutil.which
+) -> list[tuple[str, str | None]]:
+    """Tools in VENV_TOOLS that don't resolve inside .venv/bin, with where they resolve."""
+    inside = venv_bin.resolve()
+    found = []
+    for tool in VENV_TOOLS:
+        location = which(tool)
+        if location is None or Path(location).parent.resolve() != inside:
+            found.append((tool, location))
+    return found
+
+
+def hidden_pth_files(venv: Path = VENV_DIR) -> list[Path]:
+    """.pth files in the venv with macOS's hidden flag, which Python 3.13+ skips."""
+    hidden = getattr(stat, "UF_HIDDEN", 0)
+    if not hidden:
+        return []
+    return [
+        pth
+        for pth in sorted(venv.glob("lib/python*/site-packages/*.pth"))
+        if getattr(pth.stat(), "st_flags", 0) & hidden
+    ]
+
+
 def setup_check(_: argparse.Namespace) -> int:
     """Report Python, Node, and package versions. Touches no credentials."""
     problems = 0
+    warnings = 0
 
-    py_ok = sys.version_info >= MIN_PYTHON
-    problems += not py_ok
+    too_old = python_version_problem()
+    problems += too_old is not None
     print("Environment")
-    print(f"  python   {platform.python_version()}  {'ok' if py_ok else 'TOO OLD (need 3.11+)'}")
-    print(f"  venv     {'yes' if sys.prefix != sys.base_prefix else 'NO (activate .venv)'}")
+    print(f"  python   {platform.python_version()}  {'ok' if too_old is None else 'TOO OLD'}")
+    if too_old is not None:
+        print(f"           {too_old}")
+    in_venv = Path(sys.prefix).resolve() == VENV_DIR.resolve()
+    other = sys.prefix != sys.base_prefix and not in_venv
+    venv_state = "yes (.venv)" if in_venv else "ANOTHER venv" if other else "NO"
+    print(f"  venv     {venv_state}{'' if in_venv else ' (run: source .venv/bin/activate)'}")
     print(f"  platform {platform.platform()}")
+
+    shadowed = shadowed_tools()
+    for tool, location in shadowed:
+        warnings += 1
+        where = "is not on PATH" if location is None else f"resolves to {location}, outside .venv"
+        print(f"  WARN     {tool} {where}")
+    if shadowed:
+        print("           Another environment (such as conda base) is ahead of .venv on PATH.")
+        print("           Fix: conda deactivate, then source .venv/bin/activate")
+        print("           (conda config --set auto_activate_base false keeps base off),")
+        print("           or run each tool through the venv: python -m pytest, python -m mypy.")
+
+    for pth in hidden_pth_files():
+        problems += 1
+        shown = pth.relative_to(REPO_ROOT) if pth.is_relative_to(REPO_ROOT) else pth
+        print(f"  HIDDEN   {shown} has macOS's hidden flag; Python skips it,")
+        print("           so the editable install of pipeline is invisible. Fix:")
+        print(f'           chflags nohidden "{pth}"')
 
     for label, command in (("node", ["node", "--version"]), ("npm", ["npm", "--version"])):
         version = tool_version(command)
@@ -138,7 +204,10 @@ def setup_check(_: argparse.Namespace) -> int:
     _print_rows("UI packages (ui/package.json)", ui_rows)
     problems += sum(row.status != "ok" for row in ui_rows)
 
-    print(f"\n{'OK' if problems == 0 else f'{problems} problem(s) found'}")
+    status = "OK" if problems == 0 else f"{problems} problem(s) found"
+    if warnings:
+        status += f" ({warnings} warning(s) above)"
+    print(f"\n{status}")
     return 0 if problems == 0 else 1
 
 
@@ -326,8 +395,11 @@ def notebook(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_npm(script: str) -> int:
-    """Run ``npm run <script>`` in ui/. The UI's own commands live in ui/package.json."""
+def _run_npm(script: str, env: dict[str, str] | None = None) -> int:
+    """Run ``npm run <script>`` in ui/. The UI's own commands live in ui/package.json.
+
+    ``env`` adds to (or overrides) this process's environment for the build.
+    """
     npm = shutil.which("npm")
     if npm is None:
         print("npm was not found. Install Node (see .nvmrc) and try again.")
@@ -335,7 +407,9 @@ def _run_npm(script: str) -> int:
     if not (UI_DIR / "node_modules").is_dir():
         print("UI dependencies are not installed. Run: (cd ui && npm ci)")
         return 1
-    return subprocess.run([npm, "run", script], cwd=UI_DIR, check=False).returncode
+    full_env = None if env is None else {**os.environ, **env}
+    sys.stdout.flush()  # keep our lines in order with npm's when output is piped
+    return subprocess.run([npm, "run", script], cwd=UI_DIR, check=False, env=full_env).returncode
 
 
 def ui_dev(_: argparse.Namespace) -> int:
@@ -359,6 +433,136 @@ def ui_build(_: argparse.Namespace) -> int:
     shown = target.relative_to(REPO_ROOT)
     print(f"Wrote {shown} ({size_kib:.0f} KiB). It opens offline by double-click.")
     return 0
+
+
+def _configure_rebuild(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--audience-url",
+        help="build with this phone address instead of site.json's (for a rehearsal)",
+    )
+
+
+def _audience_url_for_build(override: str | None) -> str | None:
+    """The VITE_AUDIENCE_URL to build with: --audience-url, else site.json's URL, else none."""
+    from pipeline import site
+
+    if override is not None:
+        print(f"Audience URL (from --audience-url, for a rehearsal): {override}")
+        return override
+    config = site.load_site()
+    if config.placeholder:
+        print("!" * 72)
+        print("site.json still holds the placeholder project name, so these builds have")
+        print("NO audience URL and NO QR code. Choose the project name (DEPLOY.md, step 2),")
+        print("set it in site.json, and run rebuild again before the talk.")
+        print("!" * 72)
+        return None
+    print(f"Audience URL (from site.json): {config.url}  shown as {site.short_url(config.url)}")
+    return config.url
+
+
+def rebuild(args: argparse.Namespace) -> int:
+    """Export demo.json, re-run the notebook, and build every UI mode. No QPU time."""
+    from pipeline import export as exporter
+    from pipeline import site
+
+    try:
+        url = _audience_url_for_build(args.audience_url)
+    except site.SiteError as exc:
+        print(f"site.json: {exc}")
+        return 1
+    if url is not None and not site.valid_audience_url(url):
+        print(f"Refusing audience URL {url!r}: it must be http(s) with no quotes or markup.")
+        return 1
+
+    print("\n== export: demo.json from the latest committed run")
+    code = export(argparse.Namespace(run=None, sample=None))
+    if code != 0:
+        return code
+    demo = json.loads(exporter.DEMO_JSON.read_text(encoding="utf-8"))
+    if demo["metadata"]["synthetic"]:
+        print("WARNING: there is no committed run, so the builds use SYNTHETIC sample data.")
+
+    print("\n== notebook")
+    code = notebook(argparse.Namespace(run=None, sample=None))
+    if code != 0:
+        return code
+
+    env = {"VITE_AUDIENCE_URL": url or ""}
+    for script in ("build", "build:demo", "build:web"):
+        print(f"\n== npm run {script}")
+        code = _run_npm(script, env)
+        if code != 0:
+            return code
+
+    print("\n== checking the builds")
+    problems = 0
+    for build in site.QR_BUILDS:
+        shown = build.relative_to(REPO_ROOT)
+        recorded = (
+            site.built_audience_url(build.read_text(encoding="utf-8")) if build.is_file() else None
+        )
+        if recorded != (url or ""):
+            problems += 1
+            print(f"  FAIL {shown}: QR code points to {recorded!r}, expected {url or ''!r}")
+        else:
+            print(f"  ok   {shown}: QR code points to {url or 'nothing (no URL set)'}")
+    web = site.WEB_DIST_DIR
+    for name in ("index.html", "_headers", "404.html"):
+        if not (web / name).is_file():
+            problems += 1
+            print(f"  FAIL ui/dist-web/{name} is missing")
+    maps = sorted(p.relative_to(REPO_ROOT) for p in web.rglob("*.map"))
+    if maps:
+        problems += 1
+        print(f"  FAIL the phone site holds source maps: {', '.join(map(str, maps))}")
+    else:
+        print("  ok   ui/dist-web/ holds index.html, _headers, 404.html, and no source maps")
+    if problems:
+        return 1
+    print("\nRebuilt. Commit ui/src/data/demo.json and demo/index.html; deploy ui/dist-web/")
+    print("(DEPLOY.md), then run: python -m pipeline.tasks check-site")
+    print("To present: (cd ui && npm run serve), or live-server. Not npm run preview, which")
+    print("rebuilds ui/dist/ without the audience URL.")
+    return 0
+
+
+def _configure_refresh(parser: argparse.ArgumentParser) -> None:
+    _configure_collect_quantum(parser)
+    _configure_rebuild(parser)
+
+
+def refresh(args: argparse.Namespace) -> int:
+    """HUMAN ONLY: collect-quantum (with all its confirmations), then rebuild."""
+    if args.dry_run:
+        print(
+            "refresh never does a dry run. Use: python -m pipeline.tasks collect-quantum --dry-run"
+        )
+        return 2
+    code = collect_quantum(args)
+    if code != 0:
+        print("collect-quantum did not finish, so nothing was rebuilt.")
+        return code
+    return rebuild(args)
+
+
+def check_site(_: argparse.Namespace) -> int:
+    """Fetch the deployed phone site named in site.json and check it (SPEC.md, 9.7)."""
+    from pipeline import site
+
+    try:
+        config = site.load_site()
+    except site.SiteError as exc:
+        print(f"site.json: {exc}")
+        return 1
+    if config.placeholder:
+        print("site.json still holds the placeholder project name; see DEPLOY.md, step 2.")
+        return 1
+    print(f"Checking {config.url} (contacts only this site)")
+    report = site.check_site(config)
+    failed = report.failures
+    print(f"\n{'All checks passed.' if failed == 0 else f'{failed} check(s) failed.'}")
+    return 0 if failed == 0 else 1
 
 
 TASKS: dict[str, Task] = {
@@ -412,6 +616,25 @@ TASKS: dict[str, Task] = {
             "ui-build",
             "Build the single-file demo/index.html from ui/src/data/demo.json (offline).",
             ui_build,
+        ),
+        Task(
+            "rebuild",
+            "Export, re-run the notebook, and build every UI mode with site.json's URL (no QPU).",
+            rebuild,
+            _configure_rebuild,
+        ),
+        Task(
+            "refresh",
+            "HUMAN ONLY: collect-quantum (real job, with its confirmations), then rebuild.",
+            refresh,
+            _configure_refresh,
+            human_only=True,
+        ),
+        Task(
+            "check-site",
+            "HUMAN ONLY: check the deployed phone site at site.json's URL (contacts only it).",
+            check_site,
+            human_only=True,
         ),
     )
 }

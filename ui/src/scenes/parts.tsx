@@ -2,7 +2,7 @@
 
 import { demo, isSynthetic } from '../data/demo'
 import { audienceUrl } from '../lib/audienceUrl'
-import { count, percent, percentRange, utcDate } from '../lib/format'
+import { count, ibmQuantumComputer, percent, percentRange, utcDate } from '../lib/format'
 import { revealDelay } from '../lib/motion'
 import { QrCode } from '../panels/QrCode'
 import { Num } from '../primitives/Num'
@@ -57,7 +57,8 @@ export function RunNote() {
   }
   return (
     <p>
-      Data: IBM Quantum <Num>{meta.backend}</Num>, job <Num>{meta.job_id ?? 'unknown'}</Num>
+      Data (not on screen, which says only &ldquo;{ibmQuantumComputer(meta.backend_num_qubits)}&rdquo;): IBM Quantum{' '}
+      <Num>{meta.backend}</Num>, job <Num>{meta.job_id ?? 'unknown'}</Num>
       {meta.date_utc !== null && <>, completed {utcDate(meta.date_utc)}</>}; <Num>{count(meta.n_qubits)}</Num> qubits ×{' '}
       <Num>{count(meta.shots)}</Num> shots
       {meta.qubits_selected_by_readout_error && meta.qubit_selection_candidates !== null && (

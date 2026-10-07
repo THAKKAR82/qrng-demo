@@ -1,7 +1,6 @@
 /*
- * Layout of the interactive panels (src/panels). Values come from tokens.css, so the same
- * rules work on the presenter's stage (stage pixels) and in the phone view (CSS pixels);
- * phone-specific stacking is under :root[data-view='audience'].
+ * Layout of the interactive panels (src/panels), which appear only on the presenter's
+ * stage. Values come from tokens.css.
  */
 
 /* ---- Shared ------------------------------------------------------------------ */
@@ -16,8 +15,8 @@
 /* Small secondary text for technical terms (SPEC.md, Section 9.3). */
 .term {
   display: inline;
-  font-size: var(--text-xs);
-  line-height: 1.4;
+  font-size: var(--text-small);
+  line-height: var(--leading-snug);
   color: var(--color-muted);
 }
 
@@ -90,8 +89,8 @@ dt .term {
 }
 
 .run-facts {
-  font-size: var(--text-xs);
-  line-height: 1.45;
+  font-size: var(--text-small);
+  line-height: var(--leading-snug);
   color: var(--color-muted);
 }
 
@@ -122,7 +121,7 @@ dt .term {
 .machine__name {
   font-size: var(--text-lead);
   font-weight: var(--weight-semibold);
-  line-height: 1.2;
+  line-height: var(--leading-snug);
 }
 
 .machine__body {
@@ -156,7 +155,7 @@ dt .term {
 
 .machine__stats dd {
   font-size: var(--text-h3);
-  line-height: 1.1;
+  line-height: var(--leading-tight);
   letter-spacing: var(--tracking-numbers);
 }
 
@@ -201,7 +200,7 @@ dt .term {
 .tell-apart__caption {
   font-size: var(--text-lead);
   font-weight: var(--weight-semibold);
-  line-height: 1.2;
+  line-height: var(--leading-snug);
 }
 
 .tell-apart__gauges {
@@ -246,7 +245,7 @@ dt .term {
 .guess__bit {
   font-size: var(--text-giant);
   font-weight: var(--weight-medium);
-  line-height: 1;
+  line-height: var(--leading-none);
 }
 
 .guess__verdict {
@@ -268,7 +267,7 @@ dt .term {
 
 .guess__score {
   font-size: var(--text-lead);
-  line-height: 1.2;
+  line-height: var(--leading-snug);
 }
 
 .guess__score .num {
@@ -341,6 +340,7 @@ dt .term {
 }
 
 .attacker__final {
+  margin-top: var(--space-2);
   font-size: var(--text-lead);
   line-height: var(--leading-heading);
 }
@@ -351,21 +351,21 @@ dt .term {
 
 /* ---- Hardware ------------------------------------------------------------- */
 
+/* The map is as large as the stage's height allows; the details sit right beside it. */
 .hardware {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  gap: var(--space-6);
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-10);
   align-items: start;
 }
 
-.hardware__scroll {
-  max-width: calc(520 * var(--px));
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
+.hardware__frame {
+  width: calc(570 * var(--px));
 }
 
 .hardware__map {
   display: block;
+  width: 100%;
   height: auto;
   cursor: pointer;
   touch-action: manipulation;
@@ -403,12 +403,13 @@ dt .term {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  max-width: var(--measure);
 }
 
 .hardware__name {
   font-size: var(--text-h3);
   font-weight: var(--weight-semibold);
-  line-height: 1.1;
+  line-height: var(--leading-tight);
 }
 
 .hardware__flagged {
@@ -434,7 +435,7 @@ dt .term {
 
 .hardware__facts dd.num {
   font-size: var(--text-h3);
-  line-height: 1.1;
+  line-height: var(--leading-tight);
   letter-spacing: var(--tracking-numbers);
 }
 
@@ -486,66 +487,6 @@ dt .term {
 
 .unpredictability__formula {
   grid-column: 1 / -1;
-}
-
-/* ---- Phones: one column ---------------------------------------------------- */
-
-:root[data-view='audience'] .machines,
-:root[data-view='audience'] .tell-apart--with-gauges,
-:root[data-view='audience'] .guess,
-:root[data-view='audience'] .attacker,
-:root[data-view='audience'] .hardware,
-:root[data-view='audience'] .unpredictability {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-:root[data-view='audience'] .machines {
-  row-gap: var(--space-6);
-}
-
-:root[data-view='audience'] .machine__body {
-  grid-template-columns: minmax(0, 9fr) minmax(0, 11fr);
-}
-
-:root[data-view='audience'] .tell-apart__pictures {
-  gap: var(--space-2);
-}
-
-:root[data-view='audience'] .tell-apart__picture,
-:root[data-view='audience'] .tell-apart--with-gauges .tell-apart__picture {
-  flex: 1;
-  width: auto;
-  min-width: 0;
-}
-
-:root[data-view='audience'] .guess {
-  gap: var(--space-4);
-}
-
-:root[data-view='audience'] .guess__rows .bit-stream,
-:root[data-view='audience'] .machine__recent .bit-stream {
-  font-size: 14px;
-}
-
-:root[data-view='audience'] .attacker__picture {
-  width: 160px;
-}
-
-:root[data-view='audience'] .attacker__placeholder {
-  min-height: 0;
-}
-
-:root[data-view='audience'] .hardware__scroll {
-  max-width: none;
-}
-
-:root[data-view='audience'] .hardware__facts {
-  gap: var(--space-2);
-}
-
-:root[data-view='audience'] .unpredictability__numbers {
-  flex-direction: column;
-  gap: var(--space-4);
 }
 
 /* ---- Live run (live-server only, SPEC.md, Section 6.4) ------------------------ */

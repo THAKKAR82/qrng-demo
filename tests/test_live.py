@@ -275,6 +275,7 @@ def test_a_live_run_goes_through_each_stage_and_is_saved(tmp_path: Path) -> None
 
     assert (result["shots"], result["n_qubits"], result["n_bits"]) == (200, 10, 2000)
     assert result["backend"] == "fake_fez"
+    assert result["backend_num_qubits"] == 156
     assert result["physical_qubits"] == config.submission.physical_qubits
     assert result["qubit_selection"] == {
         "method": "lowest_readout_error",
@@ -586,6 +587,7 @@ def test_health_reports_armed_state(armed: Served, unarmed: Served) -> None:
         {
             "armed": True,
             "backend": "fake_fez",
+            "backend_num_qubits": 156,
             "runs_remaining": 3,
             "max_runs": 3,
             "shots": 200,
@@ -595,6 +597,7 @@ def test_health_reports_armed_state(armed: Served, unarmed: Served) -> None:
     status, body = unarmed.json("GET", live.API_HEALTH)
     assert status == 200
     assert body["armed"] is False
+    assert body["backend"] is None and body["backend_num_qubits"] is None
     assert unarmed.json("POST", live.API_RUNS) == (503, {"error": "Live mode is not available."})
 
 

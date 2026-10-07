@@ -4,7 +4,6 @@ import type { QubitResult } from '../data/types'
 import { count, fixed, percent } from '../lib/format'
 import { Num } from '../primitives/Num'
 import { Panel } from '../primitives/Panel'
-import { SegmentedControl, type Segment } from '../primitives/SegmentedControl'
 import type { PanelBaseProps } from './shared'
 import './panels.css'
 
@@ -14,12 +13,6 @@ const { layout, metadata: meta, quantum, copy } = demo
 const PAD = 0.7
 /** A tap selects the nearest qubit within this distance, in grid units. */
 const PICK_RADIUS = 0.75
-
-type Zoom = '1' | '2'
-const ZOOMS: readonly Segment<Zoom>[] = [
-  { value: '1', label: '1×' },
-  { value: '2', label: '2×' },
-]
 
 /** Results for each physical qubit used in the run. */
 const byPhysical = new Map<number, QubitResult>(
@@ -37,21 +30,19 @@ function shade(q: QubitResult): string {
 /**
  * The device's qubits from Qiskit's bundled description: the ones used in the run coloured
  * by how lopsided they read, flagged ones ringed. Tap or click anywhere to select the
- * nearest qubit; on phones the map zooms and scrolls sideways.
+ * nearest qubit.
  */
-export function HardwarePanel({ placement = 'inline', className,
-  hideHeader, delay }: PanelBaseProps) {
+export function HardwarePanel({ className, hideHeader, delay }: PanelBaseProps) {
   const [selected, setSelected] = useState<number | null>(quantum.bias_summary.worst.physical_qubit)
-  const [zoom, setZoom] = useState<Zoom>('1')
   const svgRef = useRef<SVGSVGElement>(null)
 
   if (layout === null) {
     return (
-      <Panel placement={placement} className={className} delay={delay} title="The chip">
+      <Panel className={className} delay={delay} title="The chip">
         <div className="hardware hardware--none">
           <p className="is-muted">
             There is no device layout for this data
-            {meta.backend === null ? ' (it is sample data, not from a real chip)' : ` (Qiskit ships no description of ${meta.backend})`}.
+            {meta.backend === null ? ' (it is sample data, not from a real chip)' : ' (Qiskit ships no description of this device)'}.
           </p>
         </div>
       </Panel>
@@ -93,44 +84,39 @@ export function HardwarePanel({ placement = 'inline', className,
 
   return (
     <Panel
-      placement={placement}
       className={className}
       hideHeader={hideHeader}
       delay={delay}
-      title={`The chip: ${meta.backend ?? 'the device'}'s ${count(layout.num_qubits)} qubits`}
+      title={`The chip: all ${count(layout.num_qubits)} qubits`}
       description={
         <>
           The <Num>{count(used.length)}</Num> qubits used are coloured: deeper means further from reading 0 and 1 equally
-          often. Ringed qubits were flagged as biased. Tap or click a qubit for its numbers.
+          often. Ringed qubits were flagged as biased. Click a qubit for its numbers.
         </>
       }
       controls={
-        <div className="panel-row">
-          <label className="hardware__select">
-            <span className="sr-only">Choose a qubit</span>
-            <select
-              value={selected ?? ''}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => setSelected(e.target.value === '' ? null : Number(e.target.value))}
-            >
-              <option value="">Choose a qubit…</option>
-              {used.map((q) => (
-                <option key={q} value={q}>
-                  Qubit {q}
-                  {flagged.includes(q) ? ' (flagged)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          {placement === 'standalone' && <SegmentedControl label="Zoom" segments={ZOOMS} value={zoom} onChange={setZoom} />}
-        </div>
+        <label className="hardware__select">
+          <span className="sr-only">Choose a qubit</span>
+          <select
+            value={selected ?? ''}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setSelected(e.target.value === '' ? null : Number(e.target.value))}
+          >
+            <option value="">Choose a qubit…</option>
+            {used.map((q) => (
+              <option key={q} value={q}>
+                Qubit {q}
+                {flagged.includes(q) ? ' (flagged)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
       }
     >
       <div className="hardware">
-        <div className="hardware__scroll">
+        <div className="hardware__frame">
           <svg
             ref={svgRef}
             className="hardware__map"
-            style={{ width: `${Number(zoom) * 100}%` }}
             viewBox={`${minX} ${minY} ${width} ${height}`}
             role="img"
             aria-label={`Map of ${count(layout.num_qubits)} qubits; ${count(used.length)} used in the run are coloured`}
@@ -172,8 +158,8 @@ export function HardwarePanel({ placement = 'inline', className,
             sits more than <Num>{fixed(quantum.bias_tests.z_threshold, 0)}</Num> standard errors from half (z-score).
           </p>
           <p className="term">
-            Layout: {layout.description} ({layout.device}, qiskit-ibm-runtime {layout.qiskit_ibm_runtime_version}), not
-            live calibration. Readout errors are from the run's own calibration.
+            Layout: {layout.description} (qiskit-ibm-runtime {layout.qiskit_ibm_runtime_version}), not live calibration.
+            Readout errors are from the run's own calibration.
           </p>
         </div>
       </div>

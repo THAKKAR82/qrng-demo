@@ -25,7 +25,7 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema_version` | `2` | Bumped on breaking changes. Version 2 replaced `next_bits` with `pool` and added `layout` and `copy`. |
+| `schema_version` | `3` | Bumped on breaking changes. Version 2 replaced `next_bits` with `pool` and added `layout` and `copy`; version 3 added `games`. |
 | `generated_utc` | time | When `export` ran. |
 | `metadata` | object | Where the data came from (below). |
 | `quantum` | object | Quantum stream results (below). |
@@ -33,6 +33,7 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `cross_checks` | object | Each attacker run against the other stream (below). |
 | `layout` | object \| null | The backend's qubit layout from Qiskit's bundled device description (below), or `null`. |
 | `copy` | object | Comparative phrases chosen by rule from the data (below). The UI uses them verbatim. |
+| `games` | object | Settings the phone games show on screen (below). |
 
 ## `metadata`
 
@@ -42,9 +43,9 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `synthetic` | bool | `true` if either stream is synthetic. **The UI must show the SYNTHETIC banner when this is `true`.** |
 | `sample` | bool | `true` if exported from `data/sample/`. |
 | `source` | `"ibm_quantum_hardware"` \| `"synthetic"` | |
-| `backend` | string \| null | IBM backend name. |
-| `backend_num_qubits` | int \| null | Size of the backend. |
-| `job_id` | string \| null | IBM Quantum job ID. |
+| `backend` | string \| null | IBM backend name. For the presenter notes only: never shown on screen (SPEC.md, Section 4.8). |
+| `backend_num_qubits` | int \| null | Size of the backend. The screen names the run by it: "Run on a 156-qubit IBM quantum computer". |
+| `job_id` | string \| null | IBM Quantum job ID. For the presenter notes only: never shown on screen. |
 | `date_utc` | time \| null | Job completion time (real runs) or creation time (samples). |
 | `shots` | int | Shots in the quantum job. |
 | `n_qubits` | int | Qubits measured per shot. |
@@ -174,3 +175,14 @@ Comparative phrases, chosen by the rules in `pipeline/wording.py` from the value
 | `classical_attack`, `quantum_attack` | From the attacker's hits and interval: every bit correct → "every … bit correctly"; accuracy at least 0.99 → "almost every"; interval contains 0.5 → "no better than a coin flip"; interval entirely between 0.5 and 0.55 → "only slightly better than a coin flip"; interval above 0.5 otherwise → "better than a coin flip, but not perfectly"; interval below 0.5 → "wrong more often than right". |
 | `unpredictability_comparison` | With each stream's H∞ range (`min_entropy_conservative` to `min_entropy_high`): quantum's lower end at least 0.5 above classical's upper end → "far more"; quantum's range entirely above classical's → "more"; the reverse → classical "more"; overlapping → "about the same, within the uncertainty". |
 | `bias_note` | From a sign test on how many qubits read 1 less than half the time (`analysis.bias_direction`) and the mean \|P(1) − 0.5\|: leaning toward 0, toward 1, or mixed; "slightly" when the mean \|P(1) − 0.5\| is under 0.05. |
+
+## `games`
+
+Settings for the phone games that appear on screen. They depend only on the game, not on the run (SPEC.md, Sections 4.9 and 9.6).
+
+| Field | Meaning |
+|---|---|
+| `beat.rounds` | Rounds in "Beat the attacker" (20). |
+| `beat.chance_range.low`, `.high` | The narrowest range of scores, symmetric about half, that a pure guesser (right with probability ½ each round, independently) lands in with probability at least `coverage`, from the exact binomial distribution (`analysis.chance_range`). 6 and 14 for 20 rounds. |
+| `beat.chance_range.coverage` | The target probability, 0.95. |
+| `beat.chance_range.probability` | The exact probability of landing in the range (0.958611 for 20 rounds). |

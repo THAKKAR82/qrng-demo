@@ -1,0 +1,38 @@
+{
+  "_comment": "Strings that exist only in presenter or live-run code. The phone site must contain none of them. Read by ui/scripts/verify.mjs (--web) and pipeline/site.py (check-site).",
+  "presenter": [
+    "Presenter notes",
+    "stage__frame",
+    "deck__scene",
+    "notes__",
+    "qr-overlay",
+    "hardware__",
+    "primitives",
+    "Design tokens",
+    "Why randomness matters",
+    "Measuring unpredictability",
+    "Launch the attacker",
+    "Inside the quantum computer",
+    "play on your phone",
+    "Meet the two machines",
+    "Can you tell them apart",
+    "Enter the attacker",
+    "Takeaway",
+    "Random numbers quietly keep things",
+    "Can you predict a random bit",
+    "Show of hands",
+    "Honest caveat",
+    "Generate bits",
+    "Swap attackers",
+    "VITE_AUDIENCE_URL",
+    "qrng-audience-url",
+    "Data (not on screen"
+  ],
+  "live": [
+    "Run on real quantum hardware now",
+    "qrng-live-token",
+    "/api/live/",
+    "X-QRNG-Live-Token",
+    "Fresh from"
+  ]
+}

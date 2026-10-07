@@ -4,18 +4,14 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { demo, isSynthetic } from '../data/demo'
 import type { Source } from '../data/types'
-import { count, utcDate } from '../lib/format'
+import { count, ibmQuantumComputer, utcDate } from '../lib/format'
 import { SegmentedControl, type Segment } from '../primitives/SegmentedControl'
-
-export type Placement = 'inline' | 'standalone'
 
 /** Props every panel takes. */
 export interface PanelBaseProps {
-  /** "inline" inside a slide; "standalone" in the phone view. */
-  placement?: Placement
   className?: string
   delay?: number
-  /** Answer the presenter's keys (0, 1, R, C, Q). On in slides, off on phones. */
+  /** Answer the panel's own keys (0, 1, R, M; SPEC.md, Section 9.3). On in slides, off on the primitives page. */
   keyboard?: boolean
   /** Hide the panel's own title and description (a slide's title and lede replace them). */
   hideHeader?: boolean
@@ -81,13 +77,8 @@ export function QuantumRunFacts() {
   }
   return (
     <p className="run-facts">
-      <span className="run-facts__label">The actual run:</span> IBM Quantum <span className="num">{meta.backend}</span>
-      {meta.job_id !== null && (
-        <>
-          , job <span className="num">{meta.job_id}</span>
-        </>
-      )}
-      {meta.date_utc !== null && <>, {utcDate(meta.date_utc)}</>}, <span className="num">{count(meta.n_qubits)}</span>{' '}
+      <span className="run-facts__label">Run on {ibmQuantumComputer(meta.backend_num_qubits)}</span>
+      {meta.date_utc !== null && <>, {utcDate(meta.date_utc)}</>}: <span className="num">{count(meta.n_qubits)}</span>{' '}
       qubits × <span className="num">{count(meta.shots)}</span> shots
       {meta.qubits_selected_by_readout_error && meta.qubit_selection_candidates !== null && (
         <>
@@ -106,9 +97,10 @@ export function QuantumRunFacts() {
 export function ClassicalRunFacts() {
   return (
     <p className="run-facts">
-      <span className="run-facts__label">{meta.classical_synthetic ? 'Sample data:' : 'The actual run:'}</span> Python's
-      built-in random number generator, seeded once by the operating system.{' '}
-      <span className="run-facts__detail">{meta.classical_generator}</span>
+      <span className="run-facts__label">
+        {meta.classical_synthetic ? 'Sample data: ' : ''}Python's built-in random number generator
+      </span>
+      , seeded once by the operating system. <span className="run-facts__detail">{meta.classical_generator}</span>
     </p>
   )
 }

@@ -23,10 +23,7 @@ const SOURCE_SEGMENTS: readonly Segment<Source>[] = [
   { value: 'quantum', label: SOURCE_NAME.quantum, source: 'quantum' },
 ]
 
-type Placement = 'inline' | 'standalone'
-
 interface PanelPlacement {
-  placement?: Placement
   className?: string
   delay?: number
 }
@@ -36,12 +33,11 @@ function SourcePicker({ value, onChange }: { value: Source; onChange: (s: Source
 }
 
 /** The first bits of one stream as a picture; pick the stream. */
-export function BitmapPanel({ placement = 'inline', className, delay }: PanelPlacement) {
+export function BitmapPanel({ className, delay }: PanelPlacement) {
   const [source, setSource] = useState<Source>('quantum')
   const side = stream[source].bitmap.size
   return (
     <Panel
-      placement={placement}
       className={className}
       delay={delay}
       title="Random bits as a picture"
@@ -66,7 +62,6 @@ export function BitmapPanel({ placement = 'inline', className, delay }: PanelPla
 
 /** The bits each attacker never saw, with its guesses; pick the stream. */
 export function NextBitsPanel({
-  placement = 'inline',
   className,
   delay,
   perRow = 25,
@@ -75,7 +70,6 @@ export function NextBitsPanel({
   const next = poolPreview(source)
   return (
     <Panel
-      placement={placement}
       className={className}
       delay={delay}
       title="What the attacker guessed"

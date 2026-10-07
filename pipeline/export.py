@@ -24,6 +24,7 @@ from pipeline.analysis import (
     analyze_bias,
     bias_direction,
     bitmap,
+    chance_range,
     min_entropy_from_accuracy,
     per_qubit_shannon_entropy,
     shannon_entropy_per_bit,
@@ -41,12 +42,13 @@ from pipeline.sample import SAMPLE_NAME
 
 DEMO_JSON = UI_DATA_DIR / "demo.json"
 SCHEMA_JSON = UI_DATA_DIR / "demo.schema.json"
-DEMO_SCHEMA_VERSION = 2
+DEMO_SCHEMA_VERSION = 3
 MAX_BYTES = 1_000_000
 BITMAP_SIZE = 128
 POOL_BITS = 20_000
 SPOT_SIZE = 64  # spot images are SPOT_SIZE x SPOT_SIZE bits
 SPOT_IMAGES = 10  # at most this many spot images per stream
+BEAT_ROUNDS = 20  # rounds in the phone game "Beat the attacker" (SPEC.md, Section 9.6)
 
 RUN_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{6}Z_[A-Za-z0-9_\-]+$")
 _REQUIRED_FILES = (runs.QUANTUM_NPZ, runs.QUANTUM_JSON, runs.CLASSICAL_NPZ, runs.CLASSICAL_JSON)
@@ -416,6 +418,23 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
         },
         "layout": _layout(backend.get("name"), synthetic=synthetic),
         "copy": copy,
+        "games": _games(),
+    }
+
+
+def _games() -> dict[str, Any]:
+    """Settings for the phone games that the UI quotes on screen (SPEC.md, Section 4.9)."""
+    chance = chance_range(BEAT_ROUNDS)
+    return {
+        "beat": {
+            "rounds": BEAT_ROUNDS,
+            "chance_range": {
+                "low": chance.low,
+                "high": chance.high,
+                "coverage": chance.coverage,
+                "probability": _num(chance.probability),
+            },
+        }
     }
 
 

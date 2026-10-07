@@ -16,8 +16,9 @@
 // preview of ui/dist/) it plays the part of live-server inside the browser: it adds a
 // session token to the page and answers /api/live/ itself, so no Python server and no
 // IBM account are involved. It then checks slide 3 when the server is unarmed, when it
-// can't be reached, and when it is armed: a run that finishes (each stage, the job ID, the
-// fresh bits labelled and streamed, at both stage sizes), the 120-second timeout (with a
+// can't be reached, and when it is armed: a run that finishes (each stage, the fresh bits
+// labelled with the live machine's size and streamed, at both stage sizes; the job ID and
+// backend only in the notes, never on screen), the 120-second timeout (with a
 // fake clock), a failed job, the server vanishing mid-run, and a refused start. Every API
 // request must carry the token. While fresh bits play, both pictures must be 40 × 50 with
 // square cells, in the same on-screen square as the 128 × 128 picture, captioned "40 × 50
@@ -25,7 +26,12 @@
 //
 // Presentation, at 1920×1080 and 1280×720: opens with no hash (it must land on slide 1),
 // walks every slide and every step to the end, saves a screenshot of each, checks fonts,
-// presenter notes, and that nothing spills off the stage. At 1920×1080 it also drives
+// presenter notes, and that nothing spills off the stage. Each slide is also checked as a
+// washed-out projector would show it (contrast reduced by 30%): every piece of text must
+// keep at least 3:1 contrast with what is behind it, and a screenshot is saved with the
+// filter applied. The backend name and job ID must not be on screen; the run is named
+// "Run on a N-qubit IBM quantum computer" (SPEC.md, Section 4.8), and slide 3's notes
+// carry the backend and job ID. At 1920×1080 it also drives
 // every panel with the presenter's keys and mouse: Generate fills the pictures and counts;
 // R reveals; 0 and 1 score guesses without moving the deck; M switches machine and Launch
 // runs each attack to its result; clicking a chosen qubit on the chip selects that qubit;
@@ -47,18 +53,26 @@
 // machine), opens the closing screen, and on every screen checks fonts, that nothing
 // overflows sideways, that every control is at least 44×44 CSS px, and that a real touch
 // drag scrolls the page whenever it is taller than the screen. No presenter content (stage,
-// slides, notes, panels, primitives) is on any screen, and N, F, P and Q do nothing. With
-// --web it also checks that the bundle the site loads contains no presenter content at all.
+// slides, notes, panels, primitives) is on any screen, and N, F, P and Q do nothing. The
+// Beat the attacker end screen quotes the chance range from demo.json, and the closing
+// screen names the run by the machine's size, never by backend or job ID.
 //
-// All: no console or page errors; with --synthetic yes|no, the synthetic label is (or is
-// not) on screen. With --file it also blocks the network entirely and fails on any request
-// that is not file: or data:, and checks the HTML references no external resources.
+// With --web it also checks that the bundle the site loads contains no presenter content,
+// live-run code, or source maps; serves every page with the headers from the build's
+// _headers file (vite preview doesn't apply them) and fails on any CSP violation or any
+// request to another origin; and plays both games under those headers in Firefox and
+// WebKit too, so the policy is known to work in every engine phones use.
+//
+// All: no console or page errors, and no request to any other origin; with --synthetic
+// yes|no, the synthetic label is (or is not) on screen. With --file it also blocks the
+// network entirely and fails on any request that is not file: or data:, and checks the
+// HTML references no external resources.
 // Screenshots go to data/scratch/ui-verify/ (gitignored) unless --out is given.
 
 import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { chromium } from 'playwright'
+import { chromium, firefox, webkit } from 'playwright'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
@@ -93,9 +107,20 @@ if (liveMock && urlArg === undefined) {
   console.error('--live-mock needs --url pointing at a plain preview of ui/dist/.')
   process.exit(2)
 }
-// Strings that exist only in the live-run code; builds without live mode must not hold any.
-const LIVE_STRINGS = ['Run on real quantum hardware now', 'qrng-live-token', '/api/live/', 'X-QRNG-Live-Token', 'Fresh from']
+// Strings that exist only in presenter or live-run code, shared with check-site.
+const SHARED_STRINGS = JSON.parse(await readFile(path.join(here, 'presenter-strings.json'), 'utf8'))
+// Builds without live mode must not hold any live string.
+const LIVE_STRINGS = SHARED_STRINGS.live
 const LIVE_BUTTON = 'Run on real quantum hardware now'
+// The data every build imports. The screen names the run by the machine's size; the backend
+// name and job ID belong to the presenter notes only (SPEC.md, Section 4.8).
+const demo = JSON.parse(await readFile(path.join(here, '..', 'src', 'data', 'demo.json'), 'utf8'))
+const realRun = !demo.metadata.synthetic && demo.metadata.backend !== null
+const OFF_SCREEN = [demo.metadata.backend, demo.metadata.job_id].filter((v) => typeof v === 'string' && v !== '')
+const machineName = (n) =>
+  n === null ? 'an IBM quantum computer' : `${/^8|^1[18](\d{3})*$/.test(String(n)) ? 'an' : 'a'} ${n.toLocaleString('en-US')}-qubit IBM quantum computer`
+const RUN_LABEL = `Run on ${machineName(demo.metadata.backend_num_qubits)}`
+const BEAT = demo.games.beat
 // Longest reveal on any scene is under 2 s.
 const SETTLE_MS = 2200
 
@@ -148,10 +173,71 @@ async function fontReport(cdp) {
   return { used: [...used], fallbacks }
 }
 
+// The phone site's headers, from the _headers file in the build (Cloudflare Pages format:
+// a path pattern, then indented "Name: value" lines; "! Name" removes a host default).
+let siteHeaders = null
+async function loadSiteHeaders() {
+  const response = await fetch(new URL('_headers', base))
+  if (!response.ok) {
+    fail(`web: the build has no _headers file (${response.status})`)
+    return {}
+  }
+  const rules = {}
+  let current = null
+  for (const line of (await response.text()).split('\n')) {
+    if (line.trim() === '' || line.trim().startsWith('#')) continue
+    if (!/^\s/.test(line)) {
+      current = line.trim()
+      rules[current] = {}
+    } else if (current !== null && !line.trim().startsWith('!')) {
+      const at = line.indexOf(':')
+      rules[current][line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim()
+    }
+  }
+  return rules
+}
+
+/** Headers for a site path, as the host would send them. */
+function headersFor(pathname) {
+  const out = {}
+  for (const [pattern, headers] of Object.entries(siteHeaders ?? {})) {
+    const re = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('*', '.*')}$`)
+    if (re.test(pathname)) Object.assign(out, headers)
+  }
+  return out
+}
+
+/** In --web mode: send the site's headers with every response and watch for violations. */
+async function enforceSiteHeaders(context, page, where) {
+  const origin = new URL(base).origin
+  await context.route(() => true, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.origin !== origin) {
+      fail(`${where}: request to another origin: ${url.href}`)
+      return route.abort()
+    }
+    const response = await route.fetch()
+    return route.fulfill({ response, headers: { ...response.headers(), ...headersFor(url.pathname) } })
+  })
+  await page.addInitScript(() => {
+    window.__cspViolations = []
+    document.addEventListener('securitypolicyviolation', (e) =>
+      window.__cspViolations.push(`${e.violatedDirective} blocked ${e.blockedURI || 'inline'}`),
+    )
+  })
+}
+
+async function cspViolations(page, where) {
+  const seen = await page.evaluate(() => window.__cspViolations ?? null)
+  if (seen === null) fail(`${where}: the CSP violation listener did not run`)
+  for (const v of seen ?? []) fail(`${where}: CSP violation: ${v}`)
+}
+
 await mkdir(outDir, { recursive: true })
 async function openPage(size, query, hash, extra = {}) {
   const context = await browser.newContext({ viewport: size, deviceScaleFactor: 1, offline, ...extra })
   const page = await context.newPage()
+  if (web) await enforceSiteHeaders(context, page, `web ${size.width}×${size.height}`)
   const errors = []
   page.on('console', (m) => {
     // Enabling the DevTools CSS domain (for the font check) makes Chrome re-read a file:
@@ -159,11 +245,18 @@ async function openPage(size, query, hash, extra = {}) {
     // page with no DevTools session logs nothing, offline or not.
     const fromFontCheck = /^Unsafe attempt to load URL file:.* 'file:' URLs are treated as unique security origins\.$/
     if (m.type() === 'error' && !fromFontCheck.test(m.text().trim())) errors.push(m.text())
+    // A header the browser can't parse (an unknown Permissions-Policy feature, say) is only a warning.
+    if (web && m.type() === 'warning' && /Permissions-Policy|Content.Security.Policy|header/i.test(m.text())) errors.push(m.text())
   })
   page.on('pageerror', (e) => errors.push(e.message))
-  // Without live-server there is no token, so the app must never ask for live mode.
+  // Without live-server there is no token, so the app must never ask for live mode. And
+  // the presenter builds load nothing from any other origin: no CDN, fonts, or services.
   page.on('request', (request) => {
     if (request.url().includes('/api/live/')) fail(`request to the live API without live-server: ${request.url()}`)
+    const url = new URL(request.url())
+    if (!offline && !['data:', 'blob:'].includes(url.protocol) && url.origin !== new URL(base).origin) {
+      fail(`request to another origin: ${request.url()}`)
+    }
   })
   if (offline) {
     // file: and data: URLs load normally; anything that would reach a network fails.
@@ -202,6 +295,7 @@ async function fontSelfTest(page, cdp) {
 }
 
 async function finish(name, { context, page, errors }) {
+  if (web) await cspViolations(page, name)
   const shown = (await page.locator('.synthetic-label').count()) > 0
   console.log(`  synthetic label shown: ${shown ? 'yes' : 'no'}`)
   if (expectSynthetic !== undefined && shown !== (expectSynthetic === 'yes')) {
@@ -217,6 +311,7 @@ async function presenter(size) {
   const session = await openPage(size, '', '#primitives/1')
   const { page, cdp } = session
   await fontSelfTest(page, cdp)
+  await washedSelfTest(page, '.stage')
 
   const count = Number((await page.locator('.progress__count').textContent()).split('/')[1].trim())
   for (let i = 1; i <= count; i += 1) {
@@ -293,6 +388,84 @@ async function offStage(page) {
 
 const hashOf = (page) => page.evaluate(() => window.location.hash)
 
+// The backend name and job ID never appear on screen (SPEC.md, Section 4.8).
+async function noRunIdsOnScreen(page, where) {
+  const text = await page.evaluate(() => document.body.innerText)
+  for (const id of OFF_SCREEN) if (text.includes(id)) fail(`${where}: "${id}" is on screen`)
+}
+
+// A washed-out projector, modelled as CSS contrast(0.7): every visible piece of text must
+// keep at least 3:1 contrast against the colour behind it. Returns the worst offenders.
+async function washedOutText(page, scope) {
+  return page.evaluate((scope) => {
+    const parse = (c) => {
+      const m = c.match(/rgba?\(([^)]+)\)/)
+      if (!m) return null
+      const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number)
+      return { r: r / 255, g: g / 255, b: b / 255, a }
+    }
+    const over = (top, under) => ({
+      r: top.r * top.a + under.r * (1 - top.a),
+      g: top.g * top.a + under.g * (1 - top.a),
+      b: top.b * top.a + under.b * (1 - top.a),
+      a: 1,
+    })
+    const wash = (c) => ({ r: 0.7 * (c.r - 0.5) + 0.5, g: 0.7 * (c.g - 0.5) + 0.5, b: 0.7 * (c.b - 0.5) + 0.5, a: 1 })
+    const lin = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+    const lum = (c) => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    const ratio = (a, b) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+      return (hi + 0.05) / (lo + 0.05)
+    }
+    const backgroundOf = (el) => {
+      const layers = []
+      for (let n = el; n !== null; n = n.parentElement) {
+        const bg = parse(getComputedStyle(n).backgroundColor)
+        if (bg !== null && bg.a > 0) layers.push(bg)
+        if (bg !== null && bg.a >= 1) break
+      }
+      let colour = { r: 1, g: 1, b: 1, a: 1 }
+      for (const layer of layers.reverse()) colour = over(layer, colour)
+      return colour
+    }
+    const bad = []
+    for (const el of document.querySelectorAll(`${scope} *`)) {
+      const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '')
+      if (!own || el.closest('.sr-only') || el.getClientRects().length === 0) continue
+      const style = getComputedStyle(el)
+      if (style.visibility === 'hidden' || Number(style.opacity) === 0) continue
+      const inSvg = el.closest('svg') !== null
+      const fg = parse(inSvg && style.fill !== 'none' ? style.fill : style.color)
+      if (fg === null) continue
+      const bg = backgroundOf(el)
+      const r = ratio(wash(over(fg, bg)), wash(bg))
+      if (r < 3) bad.push(`${r.toFixed(2)}:1 ${el.tagName.toLowerCase()}.${[...el.classList].join('.')} "${el.textContent.trim().slice(0, 30)}"`)
+    }
+    return bad.slice(0, 5)
+  }, scope)
+}
+
+// Faint grey text must be reported, or the washed-out check is vacuous.
+async function washedSelfTest(page, scope) {
+  await page.evaluate((scope) => {
+    const probe = document.createElement('span')
+    probe.id = 'verify-faint'
+    probe.style.color = '#b4b4b4'
+    probe.textContent = 'faint'
+    document.querySelector(scope)?.append(probe)
+  }, scope)
+  if (!(await washedOutText(page, scope)).some((w) => w.includes('"faint"'))) {
+    fail('washed-out check self-test: faint text was not detected')
+  }
+  await page.evaluate(() => document.getElementById('verify-faint')?.remove())
+}
+
+async function washedScreenshot(page, file) {
+  await page.evaluate(() => (document.documentElement.style.filter = 'contrast(0.7)'))
+  await page.screenshot({ path: file })
+  await page.evaluate(() => (document.documentElement.style.filter = ''))
+}
+
 // Centre of a qubit on the chip map, in viewport pixels, after scrolling it into view.
 async function qubitPoint(page, qubit) {
   const circle = page.locator(`.hardware__map [data-qubit="${qubit}"] circle`).first()
@@ -339,10 +512,14 @@ async function talk(size, drivePanels) {
     const { used, fallbacks } = await fontReport(cdp)
     for (const f of fallbacks) fail(`slide ${hash}: ${f}`)
     for (const o of await offStage(page)) fail(`slide ${hash} at ${size.width}×${size.height}: off the stage: ${o}`)
+    await noRunIdsOnScreen(page, `slide ${hash}`)
+    for (const w of await washedOutText(page, '.stage')) fail(`slide ${hash} on a washed-out projector: ${w}`)
+    if (drivePanels) await washedScreenshot(page, path.join(outDir, `${tag}-${hash.slice(1).replace('.', '-')}-washed.png`))
     if ((await page.locator('.notes').count()) === 0) {
       await page.keyboard.press('n')
       const notes = ((await page.locator('.notes__body').textContent()) ?? '').trim()
       if (notes === '' || /No notes for this scene/.test(notes)) fail(`slide ${hash} has no presenter notes`)
+      if (hash === '#3' && realRun && !OFF_SCREEN.every((id) => notes.includes(id))) fail('slide 3 notes lack the backend and job ID')
       await page.keyboard.press('n')
     }
     console.log(`  ${hash}: ${name}  [${used.join(', ')}]`)
@@ -376,6 +553,10 @@ async function talk(size, drivePanels) {
     const status = (await page.locator('.machines__status').textContent()) ?? ''
     if (/^\s*0 of/.test(status)) fail(`Generate did not stream bits: "${status.trim()}"`)
     if ((await page.locator('.machine__stats dd.num').first().textContent())?.trim() === '–') fail('Generate did not update the counts')
+    if (realRun) {
+      const facts = ((await page.locator('.machine--quantum .run-facts').textContent()) ?? '').replace(/\s+/g, ' ')
+      if (!facts.startsWith(RUN_LABEL)) fail(`slide 3 names the run "${facts.slice(0, 60)}", expected "${RUN_LABEL}"`)
+    }
     // A panel button was clicked: the clicker must still move the deck.
     await page.keyboard.press('PageDown')
     if ((await hashOf(page)) !== '#4') fail(`after clicking Generate, PageDown went to ${await hashOf(page)}`)
@@ -474,21 +655,7 @@ async function talk(size, drivePanels) {
 
 // Things that belong only to the presenter: none may appear in the phone version.
 const PRESENTER_SELECTORS = '.stage, .deck__scene, .scene, .notes, .panel, .progress, .qr-overlay, .primitives__half'
-const PRESENTER_STRINGS = [
-  'Presenter notes',
-  'stage__frame',
-  'deck__scene',
-  'notes__',
-  'qr-overlay',
-  'hardware__',
-  'primitives',
-  'Design tokens',
-  'Why randomness matters',
-  'Measuring unpredictability',
-  'Launch the attacker',
-  'Inside the quantum computer',
-  'play on your phone',
-]
+const PRESENTER_STRINGS = SHARED_STRINGS.presenter
 
 // A real touch drag (Chrome's synthesized touch gesture) must scroll any screen taller
 // than the viewport. Returns whether the screen was tall.
@@ -524,6 +691,7 @@ async function phone(size, shots) {
   })
   const { page, cdp } = session
   await fontSelfTest(page, cdp)
+  await washedSelfTest(page, 'body')
   await page.waitForTimeout(600)
   let tallScreens = 0
   const screens = []
@@ -548,6 +716,8 @@ async function phone(size, shots) {
     if (layout.bodyFont < 16) fail(`${where}: body text is ${layout.bodyFont}px`)
     for (const t of layout.small) fail(`${where}: control "${t.text}" is ${t.w.toFixed(0)}×${t.h.toFixed(0)} px`)
     for (const f of (await fontReport(cdp)).fallbacks) fail(`${where}: ${f}`)
+    await noRunIdsOnScreen(page, where)
+    for (const w of await washedOutText(page, 'body')) fail(`${where} with contrast reduced 30%: ${w}`)
     if (await touchScrolls(page, cdp, where)) tallScreens += 1
   }
   const tap = async (name) => {
@@ -599,14 +769,14 @@ async function phone(size, shots) {
     fail('spot: offered to play again with no unseen pictures left')
   }
 
-  // Game 2 on each machine: twenty rounds, then the two counts side by side.
+  // Game 2 on each machine: all its rounds, then the two counts side by side.
   await tap(/^Next game/)
   await screen('beat-pick')
   for (const [i, machine] of ['Ordinary formula', 'Quantum computer'].entries()) {
     await tap(i === 0 ? machine : 'Try the quantum computer')
-    for (let round = 1; round <= 20; round += 1) {
+    for (let round = 1; round <= BEAT.rounds; round += 1) {
       const counter = (await page.locator('.phone-step').first().textContent()) ?? ''
-      if (!new RegExp(`Round\\s*${round}\\s*of\\s*20`).test(counter)) fail(`beat ${machine}: round counter reads "${counter.trim()}"`)
+      if (!new RegExp(`Round\\s*${round}\\s*of\\s*${BEAT.rounds}`).test(counter)) fail(`beat ${machine}: round counter reads "${counter.trim()}"`)
       await tap(round % 3 ? 'Guess 1' : 'Guess 0')
       if (round === 1) {
         const feedback = (await page.locator('.beat-feedback').textContent()) ?? ''
@@ -616,7 +786,12 @@ async function phone(size, shots) {
     }
     await page.waitForTimeout(150)
     const scores = await page.$$eval('.beat-score', (els) => els.map((el) => el.textContent?.replace(/\s+/g, ' ').trim()))
-    if (scores.length !== 2 || !scores.every((t) => /of 20$/.test(t ?? ''))) fail(`beat ${machine}: end scores read ${JSON.stringify(scores)}`)
+    if (scores.length !== 2 || !scores.every((t) => new RegExp(`of ${BEAT.rounds}$`).test(t ?? ''))) fail(`beat ${machine}: end scores read ${JSON.stringify(scores)}`)
+    const luck = ((await page.locator('[data-chance-range]').textContent()) ?? '').replace(/\s+/g, ' ').trim()
+    const { low, high } = BEAT.chance_range
+    if (!luck.includes(`With only ${BEAT.rounds} rounds, luck swings scores a lot: most pure-guess games land between ${low} and ${high} out of ${BEAT.rounds}. One game isn't the measurement; the full dataset is.`)) {
+      fail(`beat ${machine}: the luck line reads "${luck}"`)
+    }
     console.log(`  beat ${machine}: ${scores.join(' | ')}`)
     if (i === 0) await screen('beat-end')
   }
@@ -625,7 +800,9 @@ async function phone(size, shots) {
   await tap('What it all means')
   await screen('end')
   const small = (await page.locator('.phone-small').allTextContents()).join(' ')
-  if (expectSynthetic === 'no' && !/job\s/.test(small)) fail('closing screen does not show the job ID')
+  if (realRun && !small.replace(/\s+/g, ' ').includes(`The quantum bits: ${RUN_LABEL.replace('Run', 'run')}`)) {
+    fail(`closing screen does not say "${RUN_LABEL}": "${small.trim().slice(0, 120)}"`)
+  }
   await tap('Back to the games')
   if (!/beat a quantum computer/i.test((await page.locator('h1').first().textContent()) ?? '')) fail('Back to the games did not return to the intro')
 
@@ -638,9 +815,13 @@ async function webBundle() {
   console.log('\nweb bundle')
   const context = await browser.newContext()
   const page = await context.newPage()
+  await enforceSiteHeaders(context, page, 'web bundle')
   const bodies = []
+  const scripts = []
   page.on('response', async (response) => {
     if (/\.(js|css|html)(\?|$)|\/$/.test(response.url())) bodies.push(response.text().catch(() => ''))
+    if (/\.js(\?|$)/.test(response.url())) scripts.push(response.url())
+    if (/\.map(\?|$)/.test(response.url())) fail(`web: a source map was loaded: ${response.url()}`)
   })
   await page.goto(base)
   await page.waitForLoadState('networkidle')
@@ -648,6 +829,28 @@ async function webBundle() {
   if (text.length < 1000) fail('web bundle: could not read the site\'s files')
   for (const s of PRESENTER_STRINGS) if (text.includes(s)) fail(`web bundle contains presenter content: "${s}"`)
   for (const m of LIVE_STRINGS) if (text.includes(m)) fail(`web bundle contains live-run code: "${m}"`)
+  if (/sourceMappingURL/.test(text)) fail('web bundle refers to a source map')
+  for (const url of scripts) {
+    const map = await fetch(`${url}.map`)
+    if (map.ok && (await map.text()).trimStart().startsWith('{')) fail(`web: ${url}.map is served`)
+  }
+  // The headers every page must carry (SPEC.md, Section 9.7).
+  const rootHeaders = headersFor('/')
+  const csp = rootHeaders['content-security-policy'] ?? ''
+  for (const directive of ["default-src 'none'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'", "form-action 'none'", "connect-src 'none'"]) {
+    if (!csp.includes(directive)) fail(`_headers: the CSP lacks ${directive}`)
+  }
+  if (/unsafe-(eval|inline)|\*|https?:/.test(csp)) fail(`_headers: the CSP allows more than the site's own files: ${csp}`)
+  const expected = {
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+    'cross-origin-opener-policy': 'same-origin',
+  }
+  for (const [name, value] of Object.entries(expected)) if (rootHeaders[name] !== value) fail(`_headers: ${name} is "${rootHeaders[name]}"`)
+  for (const feature of ['camera=()', 'microphone=()', 'geolocation=()']) {
+    if (!(rootHeaders['permissions-policy'] ?? '').includes(feature)) fail(`_headers: Permissions-Policy lacks ${feature}`)
+  }
+  if (!/max-age=\d{7,}/.test(rootHeaders['strict-transport-security'] ?? '')) fail('_headers: no Strict-Transport-Security')
   // The primitives page and the deck's routes don't exist here.
   for (const route of ['?primitives', '#primitives', '?view=presenter#3']) {
     await page.goto(`${base}${route}`)
@@ -655,7 +858,50 @@ async function webBundle() {
     if ((await page.locator(PRESENTER_SELECTORS).count()) > 0) fail(`web: ${route} shows presenter content`)
   }
   console.log(`  ${(text.length / 1024).toFixed(0)} KiB checked`)
+  await cspViolations(page, 'web bundle')
   await context.close()
+}
+
+// Both games under the site's headers in another engine: Firefox (Gecko) or WebKit (Safari).
+async function webEngine(engine) {
+  const where = `web ${engine.name()}`
+  console.log(`\n${where}`)
+  const other = await engine.launch()
+  try {
+    const context = await other.newContext({ viewport: PHONE, hasTouch: true })
+    const page = await context.newPage()
+    const errors = []
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text())
+    })
+    page.on('pageerror', (e) => errors.push(e.message))
+    await enforceSiteHeaders(context, page, where)
+    await page.goto(base)
+    await page.evaluate(() => document.fonts.ready)
+    const faces = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family))
+    if (!faces.some((f) => f.includes('IBM Plex Sans'))) fail(`${where}: IBM Plex Sans did not load`)
+    const click = (name) => page.getByRole('button', { name, exact: typeof name === 'string' }).first().click()
+    await click('Spot the quantum machine')
+    await click('Start')
+    for (let round = 1; round <= 5; round += 1) {
+      await click(round % 2 ? 'Picture A' : 'Picture B')
+      await click(round < 5 ? 'Next pair' : 'See your score')
+    }
+    await click(/^Next game/)
+    await click('Quantum computer')
+    for (let round = 1; round <= BEAT.rounds; round += 1) await click(round % 2 ? 'Guess 1' : 'Guess 0')
+    if ((await page.locator('[data-chance-range]').count()) !== 1) fail(`${where}: Beat the attacker did not reach its end`)
+    await click('What it all means')
+    // Before the screenshot: Playwright's WebKit screenshot injects a <style> of its own
+    // (to hide the caret), which the CSP rightly blocks; it is not the app's.
+    await cspViolations(page, where)
+    for (const e of errors) fail(`${where} console: ${e}`)
+    await page.screenshot({ path: path.join(outDir, `web-${engine.name()}-end.png`), fullPage: true, caret: 'initial' })
+    console.log('  both games played under the site headers')
+    await context.close()
+  } finally {
+    await other.close()
+  }
 }
 
 // ---- Live run, mocked (--live-mock) -------------------------------------------------
@@ -663,6 +909,8 @@ async function webBundle() {
 // here. Nothing reaches a Python server or IBM.
 
 const MOCK_BACKEND = 'mock_backend'
+// Not the recorded run's size, so the fresh label must come from the live response.
+const MOCK_BACKEND_QUBITS = 133
 const MOCK_JOB = 'd3mockjob00000000000'
 const MOCK_RUN = '0123456789abcdef'
 
@@ -675,6 +923,7 @@ function mockResult() {
   }
   return {
     backend: MOCK_BACKEND,
+    backend_num_qubits: MOCK_BACKEND_QUBITS,
     job_id: MOCK_JOB,
     shots: 200,
     n_qubits: 10,
@@ -691,8 +940,17 @@ function mockResult() {
   }
 }
 
-const ARMED = (remaining) => ({ armed: true, backend: MOCK_BACKEND, runs_remaining: remaining, max_runs: 3, shots: 200, n_qubits: 10 })
-const UNARMED = { armed: false, backend: null, runs_remaining: 0, max_runs: 0, shots: null, n_qubits: null }
+const ARMED = (remaining) => ({
+  armed: true,
+  backend: MOCK_BACKEND,
+  backend_num_qubits: MOCK_BACKEND_QUBITS,
+  runs_remaining: remaining,
+  max_runs: 3,
+  shots: 200,
+  n_qubits: 10,
+})
+const UNARMED = { armed: false, backend: null, backend_num_qubits: null, runs_remaining: 0, max_runs: 0, shots: null, n_qubits: null }
+const MOCK_MACHINE = `a ${MOCK_BACKEND_QUBITS}-qubit IBM quantum computer`
 const json = (route, status, body) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
 /** A mocked live server: health, start, and a scripted list of status replies. */
@@ -773,6 +1031,8 @@ async function liveScenario(name, { size = PRESENTER_SIZES[0], server, fakeClock
   await cdp.send('DOM.enable')
   await cdp.send('CSS.enable')
   await check({ page, calls, tag })
+  const screen = await page.evaluate(() => document.body.innerText)
+  for (const id of [MOCK_BACKEND, MOCK_JOB, ...OFF_SCREEN]) if (screen.includes(id)) fail(`${tag}: "${id}" is on screen`)
   const { fallbacks } = await fontReport(cdp)
   for (const f of fallbacks) fail(`${tag}: ${f}`)
   for (const o of await offStage(page)) fail(`${tag}: off the stage: ${o}`)
@@ -837,7 +1097,7 @@ async function liveChecks() {
     await page.getByRole('button', { name: 'Generate bits' }).click()
     await page.waitForTimeout(800)
     await waitText(page.locator('.machines__status'), /recorded bits from each machine/, `${tag}: recorded bits still stream`)
-    if ((await page.locator('.run-facts', { hasText: 'The actual run:' }).count()) === 0 && (await page.locator('.run-facts', { hasText: 'Sample data' }).count()) === 0) {
+    if ((await page.locator('.run-facts', { hasText: realRun ? RUN_LABEL : 'Sample data' }).count()) === 0) {
       fail(`${tag}: the recorded run's facts are missing`)
     }
   })
@@ -864,12 +1124,14 @@ async function liveChecks() {
       // The button gives up focus, so the clicker still drives the deck.
       if ((await page.evaluate(() => document.activeElement?.tagName)) === 'BUTTON') fail(`${tag}: live button kept focus`)
       const status = page.locator('.live-run')
-      await waitText(status, /Sending a job to IBM Quantum mock_backend\./, `${tag}: submitting`)
-      await waitText(status, new RegExp(`Sent to mock_backend.*Job ${MOCK_JOB}\\.`), `${tag}: submitted with job ID`)
-      await waitText(status, new RegExp(`Waiting in IBM's queue: 0:05\\.\\s*Job ${MOCK_JOB}`), `${tag}: queued with time`)
-      await waitText(status, /Running on mock_backend now\./, `${tag}: running`)
-      await waitText(status, /Fresh bits from mock_backend are playing on the quantum machine\..*\(2,000 bits\), so its numbers are noisy; the headline numbers come from the full run\./, `${tag}: done`)
-      await waitText(page.locator('.machine--quantum .run-facts'), /^Fresh from mock_backend, 7 October 2026, 14:31 UTC: job d3mockjob00000000000, 10 qubits × 200 shots \(qubits picked for lowest readout error from 156\)\.$/, `${tag}: fresh label`)
+      await waitText(status, new RegExp(`^Sending a job to ${MOCK_MACHINE}\\.$`), `${tag}: submitting`)
+      await waitText(status, /^Sent\. Waiting for IBM's queue\.$/, `${tag}: submitted`)
+      await waitText(status, /^Waiting in IBM's queue: 0:05\.$/, `${tag}: queued with time`)
+      await waitText(status, /^Running on the quantum computer now\.$/, `${tag}: running`)
+      // The live job's ID and backend are in the notes as soon as they exist, never on screen.
+      if (!(await notesText(page)).includes(`job ${MOCK_JOB} on ${MOCK_BACKEND}`)) fail(`${tag}: notes lack the live job ID and backend`)
+      await waitText(status, new RegExp(`^Fresh bits from ${MOCK_MACHINE} are playing on the quantum machine\\..*\\(2,000 bits\\), so its numbers are noisy; the headline numbers come from the full run\\.$`), `${tag}: done`)
+      await waitText(page.locator('.machine--quantum .run-facts'), new RegExp(`^Fresh from ${MOCK_MACHINE}, 7 October 2026, 14:31 UTC: 10 qubits × 200 shots \\(qubits picked for lowest readout error from 156\\)\\.$`), `${tag}: fresh label`)
       await waitText(page.locator('.machines__status'), /^End of the fresh bits\.$/, `${tag}: fresh bits streamed to the end`)
       if ((await page.locator('.machine--quantum .machine__stats dd.num').first().textContent())?.trim() === '–') fail(`${tag}: no counts for the fresh bits`)
       // Both pictures are sized to the 2,000 bits (40 × 50), with square cells, inside the
@@ -895,7 +1157,7 @@ async function liveChecks() {
         await page.keyboard.press('PageUp')
         await page.waitForTimeout(400)
         // Back on the slide, the fresh run is still shown.
-        await waitText(page.locator('.machine--quantum .run-facts'), /^Fresh from mock_backend/, `${tag}: fresh run kept across slides`)
+        await waitText(page.locator('.machine--quantum .run-facts'), new RegExp(`^Fresh from ${MOCK_MACHINE}`), `${tag}: fresh run kept across slides`)
       }
     })
   }
@@ -910,7 +1172,7 @@ async function liveChecks() {
     await page.clock.fastForward('00:11')
     const text = await waitText(page.locator('.live-run'), /^IBM's queue is busy; showing /, `${tag}: timeout label`)
     if (!RECORDED.test(text)) fail(`${tag}: label does not name the recorded run: "${text}"`)
-    if (!new RegExp(`Job ${MOCK_JOB} may still finish on IBM\\.`).test(text)) fail(`${tag}: no note that the job may still finish`)
+    if (!/The job may still finish on IBM\.$/.test(text)) fail(`${tag}: no note that the job may still finish`)
     if ((await page.locator('.machine--quantum .run-facts', { hasText: 'Fresh from' }).count()) > 0) fail(`${tag}: fresh label after a timeout`)
     await expectNormalPictures(page, tag)
     const polls = () => calls.filter((c) => c.pathname.startsWith('/api/live/runs/')).length
@@ -918,7 +1180,9 @@ async function liveChecks() {
     await page.clock.fastForward('00:05')
     await page.waitForTimeout(300)
     if (polls() > before) fail(`${tag}: kept polling after giving up`)
-    if (!/may still finish on IBM/.test(await notesText(page))) fail(`${tag}: notes don't say the job may still finish`)
+    const notes = await notesText(page)
+    if (!/may still finish on IBM/.test(notes)) fail(`${tag}: notes don't say the job may still finish`)
+    if (!notes.includes(`job ${MOCK_JOB} on ${MOCK_BACKEND}`)) fail(`${tag}: notes lack the job ID to look up later`)
   })
 
   await liveScenario('failed', { server: armedServer({ statuses: [{ stage: 'queued', job_id: MOCK_JOB, elapsed_seconds: 2 }, { stage: 'failed', job_id: MOCK_JOB, error: 'The job ended as ERROR.' }] }) }, async ({ page, tag }) => {
@@ -946,7 +1210,9 @@ try {
   if (liveMock) {
     await liveChecks()
   } else if (web) {
+    siteHeaders = await loadSiteHeaders()
     await webBundle()
+    for (const engine of [firefox, webkit]) await webEngine(engine)
   } else {
     for (const [i, size] of PRESENTER_SIZES.entries()) await talk(size, i === 0)
     for (const size of PRESENTER_SIZES) await presenter(size)

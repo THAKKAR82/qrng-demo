@@ -10,11 +10,6 @@ interface PanelProps {
   /** Controls (such as a SegmentedControl), shown above the content. */
   controls?: ReactNode
   children: ReactNode
-  /**
-   * "inline": inside a Scene on the presenter's stage; the parent places it on the grid.
-   * "standalone": a full-width section of the audience view's explore mode.
-   */
-  placement?: 'inline' | 'standalone'
   /** Extra class, for example to place the panel on the scene grid. */
   className?: string
   /**
@@ -35,12 +30,11 @@ export function Panel({
   description,
   controls,
   children,
-  placement = 'inline',
   className,
   hideHeader = false,
   delay = 0,
 }: PanelProps) {
-  const classes = ['panel', `panel--${placement}`, 'reveal', className].filter(Boolean).join(' ')
+  const classes = ['panel', 'reveal', className].filter(Boolean).join(' ')
   return (
     <section className={classes} style={revealDelay(delay)}>
       <header className={hideHeader ? 'panel__header sr-only' : 'panel__header'}>

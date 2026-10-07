@@ -43,6 +43,7 @@
 
   /* Modular scale, ratio 4:3 (a perfect fourth), from a 24px body. */
   --text-xs: calc(18 * var(--px)); /* presenter chrome only: progress counter, spec tags */
+  --text-small: calc(21 * var(--px)); /* secondary text: technical terms, run facts */
   --text-body: calc(24 * var(--px));
   --text-lead: calc(32 * var(--px));
   --text-h3: calc(43 * var(--px));
@@ -51,8 +52,10 @@
   --text-hero: calc(101 * var(--px)); /* headline numbers */
   --text-giant: calc(180 * var(--px)); /* one number that owns the screen */
 
-  --leading-tight: 1.05;
+  --leading-none: 1; /* single-line labels and counters */
+  --leading-tight: 1.05; /* big numbers */
   --leading-heading: 1.15;
+  --leading-snug: 1.25; /* short labels and captions that may wrap */
   --leading-body: 1.45;
   --tracking-display: -0.02em;
   --tracking-numbers: -0.03em;
@@ -98,6 +101,7 @@
   --duration-fast: 200ms;
   --duration-base: 320ms;
   --duration-slow: 400ms;
+  --duration-stagger: 120ms; /* gap between a chart appearing and its line drawing */
   --reveal-shift: calc(12 * var(--px));
 
   /* ---- Layers ------------------------------------------------------------ */
@@ -116,6 +120,7 @@
   --px: 0.5px;
 
   --text-xs: 14px;
+  --text-small: 16px;
   --text-body: 18px;
   --text-lead: 21px;
   --text-h3: 26px;

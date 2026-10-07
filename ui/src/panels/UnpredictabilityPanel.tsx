@@ -15,11 +15,9 @@ const { copy } = demo
  * Min-entropy against each attacker: the headline measure of unpredictability. The two
  * numbers, their ranges and conservative values, all from demo.json.
  */
-export function UnpredictabilityPanel({ placement = 'inline', className,
-  hideHeader, delay = 0 }: PanelBaseProps) {
+export function UnpredictabilityPanel({ className, hideHeader, delay = 0 }: PanelBaseProps) {
   return (
     <Panel
-      placement={placement}
       className={className}
       hideHeader={hideHeader}
       delay={delay}

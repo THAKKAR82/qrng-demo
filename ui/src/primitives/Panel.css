@@ -29,8 +29,3 @@
 .panel__content {
   min-width: 0;
 }
-
-/* Standalone panels are sections of a scrolling page. */
-.panel--standalone {
-  padding-bottom: var(--space-6);
-}

@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -56,10 +57,15 @@ def test_registered_tasks_and_human_only() -> None:
         "ui-dev",
         "ui-build",
         "live-server",
+        "rebuild",
+        "refresh",
+        "check-site",
     }
     assert {name for name, task in TASKS.items() if task.human_only} == {
         "collect-quantum",
         "live-server",
+        "refresh",
+        "check-site",
     }
 
 
@@ -189,12 +195,17 @@ class _NpmCalls:
     def __init__(self, returncode: int = 0) -> None:
         self.returncode = returncode
         self.calls: list[tuple[list[str], Path]] = []
+        self.envs: list[dict[str, str] | None] = []
+        self.on_call: Callable[[str, dict[str, str] | None], None] | None = None
 
     def __call__(
-        self, args: list[str], *, cwd: Path, check: bool
+        self, args: list[str], *, cwd: Path, check: bool, env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess[str]:
         assert check is False
         self.calls.append((args, cwd))
+        self.envs.append(env)
+        if self.on_call is not None:
+            self.on_call(args[-1], env)
         return subprocess.CompletedProcess(args, self.returncode)
 
 
@@ -246,3 +257,245 @@ def test_ui_tasks_need_installed_dependencies(
     assert main(["ui-dev"]) == 1
     assert npm.calls == []
     assert "npm ci" in capsys.readouterr().out
+
+
+def _step(steps: list[str], name: str, code: int = 0) -> Callable[[object], int]:
+    """A stand-in task that records its name and returns ``code``."""
+
+    def run(_: object) -> int:
+        steps.append(name)
+        return code
+
+    return run
+
+
+# --- setup-check ---------------------------------------------------------------------------
+
+
+def test_python_version_problem() -> None:
+    from pipeline.tasks import python_version_problem
+
+    assert python_version_problem((3, 11, 0)) is None
+    assert python_version_problem((3, 13, 9)) is None
+    message = python_version_problem((3, 9, 6))
+    assert message is not None
+    assert "3.9.6" in message
+    assert "python3.13 -m venv .venv" in message
+
+
+def test_shadowed_tools(tmp_path: Path) -> None:
+    from pipeline.tasks import VENV_TOOLS, shadowed_tools
+
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    inside = {tool: str(venv_bin / tool) for tool in VENV_TOOLS}
+    assert shadowed_tools(venv_bin, inside.get) == []
+    # A venv built from Anaconda's Python is fine: only where the tools resolve matters.
+    conda = {**inside, "pytest": "/opt/anaconda3/bin/pytest"}
+    assert shadowed_tools(venv_bin, conda.get) == [("pytest", "/opt/anaconda3/bin/pytest")]
+    missing = {k: v for k, v in inside.items() if k != "ruff"}
+    assert shadowed_tools(venv_bin, missing.get) == [("ruff", None)]
+
+
+@pytest.mark.skipif(not hasattr(os, "chflags"), reason="macOS file flags only")
+def test_hidden_pth_files(tmp_path: Path) -> None:
+    import stat
+
+    from pipeline.tasks import hidden_pth_files
+
+    site_packages = tmp_path / "lib" / "python3.13" / "site-packages"
+    site_packages.mkdir(parents=True)
+    visible = site_packages / "other.pth"
+    visible.write_text("", encoding="utf-8")
+    hidden = site_packages / "__editable__.qrng_demo-0.1.0.pth"
+    hidden.write_text("", encoding="utf-8")
+    assert hidden_pth_files(tmp_path) == []
+    os.chflags(hidden, stat.UF_HIDDEN)
+    assert hidden_pth_files(tmp_path) == [hidden]
+
+
+def test_setup_check_prints_the_chflags_fix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from pipeline import tasks
+
+    pth = tmp_path / "__editable__.qrng_demo-0.1.0.pth"
+    monkeypatch.setattr(tasks, "hidden_pth_files", lambda: [pth])
+    assert main(["setup-check"]) == 1
+    assert f'chflags nohidden "{pth}"' in capsys.readouterr().out
+
+
+# --- rebuild and refresh -------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_rebuild(
+    fake_ui: tuple[Path, Path, _NpmCalls], monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, _NpmCalls, list[str]]:
+    """rebuild with export, the notebook, and npm replaced by fakes that write outputs."""
+    from pipeline import export as exporter
+    from pipeline import site, tasks
+
+    ui_dir, demo_dir, npm = fake_ui
+    root = ui_dir.parent
+    steps: list[str] = []
+    demo_json = root / "demo.json"
+    demo_json.write_text(json.dumps({"metadata": {"synthetic": False}}), encoding="utf-8")
+    monkeypatch.setattr(exporter, "DEMO_JSON", demo_json)
+    monkeypatch.setattr(tasks, "export", _step(steps, "export"))
+    monkeypatch.setattr(tasks, "notebook", _step(steps, "notebook"))
+    dist_index = ui_dir / "dist" / "index.html"
+    demo_index = demo_dir / "index.html"
+    web = ui_dir / "dist-web"
+    monkeypatch.setattr(site, "QR_BUILDS", (dist_index, demo_index))
+    monkeypatch.setattr(site, "WEB_DIST_DIR", web)
+    site_json = root / "site.json"
+    site_json.write_text(
+        json.dumps(
+            {
+                "host": "cloudflare-pages",
+                "project": "qrng-talk",
+                "url": "https://qrng-talk.pages.dev/",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(site, "SITE_JSON", site_json)
+    monkeypatch.setattr(site.load_site, "__defaults__", (site_json,))
+
+    def build(script: str, env: dict[str, str] | None) -> None:
+        steps.append(script)
+        url = (env or {}).get("VITE_AUDIENCE_URL", "")
+        meta = f'<meta name="qrng-audience-url" content="{url}" />'
+        if script == "build":
+            dist_index.parent.mkdir(parents=True, exist_ok=True)
+            dist_index.write_text(meta, encoding="utf-8")
+        elif script == "build:demo":
+            demo_index.write_text(meta, encoding="utf-8")
+        else:
+            web.mkdir(parents=True, exist_ok=True)
+            for name in ("index.html", "_headers", "404.html"):
+                (web / name).write_text("x", encoding="utf-8")
+
+    npm.on_call = build
+    return site_json, npm, steps
+
+
+def test_rebuild_builds_every_mode_with_the_site_url(
+    fake_rebuild: tuple[Path, _NpmCalls, list[str]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, npm, steps = fake_rebuild
+    assert main(["rebuild"]) == 0
+    assert steps == ["export", "notebook", "build", "build:demo", "build:web"]
+    assert all(
+        env is not None and env["VITE_AUDIENCE_URL"] == "https://qrng-talk.pages.dev/"
+        for env in npm.envs
+    )
+    assert "qrng-talk.pages.dev" in capsys.readouterr().out
+
+
+def test_rebuild_with_the_placeholder_builds_without_a_qr_code(
+    fake_rebuild: tuple[Path, _NpmCalls, list[str]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    site_json, npm, _ = fake_rebuild
+    site_json.write_text(
+        json.dumps(
+            {
+                "host": "cloudflare-pages",
+                "project": "CHOOSE-A-NAME",
+                "url": "https://CHOOSE-A-NAME.pages.dev/",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert main(["rebuild"]) == 0
+    assert all(env is not None and env["VITE_AUDIENCE_URL"] == "" for env in npm.envs)
+    assert "NO QR code" in capsys.readouterr().out
+
+
+def test_rebuild_rehearsal_override_and_bad_urls(
+    fake_rebuild: tuple[Path, _NpmCalls, list[str]],
+) -> None:
+    _, npm, _ = fake_rebuild
+    rehearsal = "http://192.168.1.20:4173/?view=audience"
+    assert main(["rebuild", "--audience-url", rehearsal]) == 0
+    assert npm.envs[-1] is not None and npm.envs[-1]["VITE_AUDIENCE_URL"] == rehearsal
+    assert main(["rebuild", "--audience-url", 'https://x.pages.dev/"><b>']) == 1
+
+
+def test_rebuild_fails_when_a_build_is_missing_its_qr_url(
+    fake_rebuild: tuple[Path, _NpmCalls, list[str]],
+) -> None:
+    from pipeline import site
+
+    _, npm, _ = fake_rebuild
+    original = npm.on_call
+    assert original is not None
+
+    def stale_demo(script: str, env: dict[str, str] | None) -> None:
+        original(script, None if script == "build:demo" else env)
+
+    npm.on_call = stale_demo
+    assert main(["rebuild"]) == 1
+    assert site.built_audience_url(site.QR_BUILDS[1].read_text(encoding="utf-8")) == ""
+
+
+def test_rebuild_fails_on_source_maps(fake_rebuild: tuple[Path, _NpmCalls, list[str]]) -> None:
+    from pipeline import site
+
+    _, npm, _ = fake_rebuild
+    original = npm.on_call
+    assert original is not None
+
+    def with_map(script: str, env: dict[str, str] | None) -> None:
+        original(script, env)
+        if script == "build:web":
+            (site.WEB_DIST_DIR / "index.js.map").write_text("{}", encoding="utf-8")
+
+    npm.on_call = with_map
+    assert main(["rebuild"]) == 1
+
+
+def test_refresh_collects_then_rebuilds(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pipeline import tasks
+
+    steps: list[str] = []
+    result = {"collect": 0}
+
+    def collect(_: object) -> int:
+        steps.append("collect")
+        return result["collect"]
+
+    monkeypatch.setattr(tasks, "collect_quantum", collect)
+    monkeypatch.setattr(tasks, "rebuild", _step(steps, "rebuild"))
+    assert main(["refresh"]) == 0
+    assert steps == ["collect", "rebuild"]
+    steps.clear()
+    result["collect"] = 1
+    assert main(["refresh"]) == 1
+    assert steps == ["collect"]
+    steps.clear()
+    assert main(["refresh", "--dry-run"]) == 2
+    assert steps == []
+
+
+def test_check_site_refuses_the_placeholder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from pipeline import site
+
+    site_json = tmp_path / "site.json"
+    site_json.write_text(
+        json.dumps(
+            {
+                "host": "cloudflare-pages",
+                "project": "CHOOSE-A-NAME",
+                "url": "https://CHOOSE-A-NAME.pages.dev/",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(site.load_site, "__defaults__", (site_json,))
+    monkeypatch.setattr(site, "http_fetch", lambda url: pytest.fail("check-site fetched"))
+    assert main(["check-site"]) == 1
+    assert "placeholder" in capsys.readouterr().out

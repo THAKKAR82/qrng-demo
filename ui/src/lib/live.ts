@@ -23,7 +23,9 @@ const REQUEST_TIMEOUT_MS = 10_000
 
 export interface LiveHealth {
   armed: boolean
+  /** For the presenter notes only; the screen names the machine by its size (SPEC.md, 4.8). */
   backend: string | null
+  backend_num_qubits: number | null
   runs_remaining: number
   max_runs: number
   shots: number | null
@@ -33,7 +35,9 @@ export interface LiveHealth {
 /** A finished live run as the server reports it, with its bits decoded. */
 export interface LiveResult {
   runId: string
+  /** For the presenter notes only, like jobId; the screen uses backendQubits (SPEC.md, 4.8). */
   backend: string
+  backendQubits: number | null
   jobId: string
   shots: number
   nQubits: number
@@ -131,6 +135,7 @@ function parseHealth(body: unknown): LiveHealth | null {
   return {
     armed: body.armed,
     backend: isText(body.backend) ? body.backend : null,
+    backend_num_qubits: isCount(body.backend_num_qubits) ? body.backend_num_qubits : null,
     runs_remaining: body.runs_remaining,
     max_runs: isCount(body.max_runs) ? body.max_runs : 0,
     shots: isCount(body.shots) ? body.shots : null,
@@ -173,6 +178,7 @@ function parseResult(runId: string, raw: unknown): LiveResult | null {
   return {
     runId,
     backend,
+    backendQubits: isCount(raw.backend_num_qubits) ? raw.backend_num_qubits : null,
     jobId: job_id,
     shots,
     nQubits: n_qubits,

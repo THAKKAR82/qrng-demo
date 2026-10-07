@@ -1,6 +1,6 @@
 {
- "schema_version": 2,
- "generated_utc": "2026-10-07T02:26:14Z",
+ "schema_version": 3,
+ "generated_utc": "2026-10-07T14:40:40Z",
  "metadata": {
   "run_folder": "2026-10-06T013454Z_ibm_fez",
   "synthetic": false,
@@ -10865,5 +10865,16 @@
   "quantum_attack": "On the quantum bits, the attacker did only slightly better than a coin flip.",
   "unpredictability_comparison": "Each quantum bit holds far more genuine surprise than each classical bit.",
   "bias_note": "Some qubits lean slightly toward 0 and others toward 1, with no overall direction."
+ },
+ "games": {
+  "beat": {
+   "rounds": 20,
+   "chance_range": {
+    "low": 6,
+    "high": 14,
+    "coverage": 0.95,
+    "probability": 0.958611
+   }
+  }
  }
 }

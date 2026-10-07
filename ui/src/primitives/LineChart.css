@@ -38,7 +38,7 @@
   stroke-linecap: round;
   stroke-dasharray: 1;
   animation: line-draw var(--duration-slow) var(--ease-out) both;
-  animation-delay: calc(var(--reveal-delay, 0ms) + 120ms);
+  animation-delay: calc(var(--reveal-delay, 0ms) + var(--duration-stagger));
 }
 
 .line-chart__line--classical {

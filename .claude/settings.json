@@ -18,6 +18,9 @@
       "Bash(*pipeline/tasks.py refresh*)",
       "Bash(*pipeline.tasks live-server*)",
       "Bash(*pipeline/tasks.py live-server*)",
+      "Bash(*pipeline.tasks check-site*)",
+      "Bash(*pipeline/tasks.py check-site*)",
+      "Bash(*wrangler*)",
       "Bash(git push *)",
       "Bash(git -C * push*)",
       "Bash(git -c * push*)"

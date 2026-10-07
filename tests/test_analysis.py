@@ -8,6 +8,7 @@ from pipeline.analysis import (
     bias_direction,
     bias_per_qubit,
     bitmap,
+    chance_range,
     entropy_estimator_bias,
     entropy_shortfall,
     min_entropy_from_accuracy,
@@ -249,3 +250,32 @@ def test_bias_direction(p_one: list[float], direction: str) -> None:
     assert result.direction == direction
     assert result.n_below_half == sum(p < 0.5 for p in p_one)
     assert result.n_above_half == sum(p > 0.5 for p in p_one)
+
+
+# --- Chance range for pure guessing ------------------------------------------------------------
+
+
+def test_chance_range_for_twenty_guesses_by_hand() -> None:
+    # P(6 <= X <= 14) for X ~ Binomial(20, 1/2) is 1 - 2 * 21700/2**20 = 0.95861...; the
+    # next narrower range, 7 to 13, holds only 0.8847, so 6 to 14 is the narrowest >= 95%.
+    result = chance_range(20)
+    assert (result.low, result.high) == (6, 14)
+    assert result.probability == pytest.approx(1 - 2 * 21700 / 2**20)
+    assert result.coverage == 0.95
+
+
+@pytest.mark.parametrize("n", [1, 2, 5, 20, 21, 100])
+def test_chance_range_is_symmetric_and_narrowest(n: int) -> None:
+    result = chance_range(n)
+    assert result.low + result.high == n
+    assert result.probability >= 0.95
+    if result.high - result.low >= 2:
+        narrower = sum(math.comb(n, k) for k in range(result.low + 1, result.high)) / 2**n
+        assert narrower < 0.95
+
+
+def test_chance_range_rejects_bad_input() -> None:
+    with pytest.raises(ValueError):
+        chance_range(0)
+    with pytest.raises(ValueError):
+        chance_range(20, coverage=1.5)

@@ -8,8 +8,8 @@ import { countMatches } from '../lib/stats'
 import { OTHER, PHONE_NAME, type Screen } from './names'
 import { PhoneButton, PhoneScreen } from './parts'
 
-/** Rounds in one game (SPEC.md, Section 9.6). */
-export const BEAT_ROUNDS = 20
+/** Rounds in one game, and the scores pure guessing lands in, from demo.json (SPEC.md, 4.9). */
+const { rounds: BEAT_ROUNDS, chance_range: chance } = demo.games.beat
 
 interface Game {
   machine: Source
@@ -19,10 +19,10 @@ interface Game {
 }
 
 /**
- * "Beat the attacker": pick a machine, then guess the next bit for 20 rounds. Each round
- * reveals the true bit, whether you were right, and what the attacker guessed. Bits come
- * from the held-out pool under the Guess game's rules: a random start once per session,
- * never repeated, stopping at the end of the pool.
+ * "Beat the attacker": pick a machine, then guess the next bit for BEAT_ROUNDS rounds. Each
+ * round reveals the true bit, whether you were right, and what the attacker guessed. Bits
+ * come from the held-out pool under the Guess game's rules: a random start once per
+ * session, never repeated, stopping at the end of the pool.
  */
 export function BeatGame({ go }: { go: (screen: Screen) => void }) {
   const [classicalCursor, setClassicalCursor] = useSessionNumber('guess:classical', () =>
@@ -100,6 +100,12 @@ export function BeatGame({ go }: { go: (screen: Screen) => void }) {
         <p className="phone-lead">
           Over all <span className="num">{count(attacker.n_predicted)}</span> bits it never saw:{' '}
           {machine === 'classical' ? demo.copy.classical_attack : demo.copy.quantum_attack}
+        </p>
+        <p className="phone-small" data-chance-range>
+          With only <span className="num">{count(BEAT_ROUNDS)}</span> rounds, luck swings scores a lot: most pure-guess
+          games land between <span className="num">{count(chance.low)}</span> and{' '}
+          <span className="num">{count(chance.high)}</span> out of <span className="num">{count(BEAT_ROUNDS)}</span>. One
+          game isn't the measurement; the full dataset is.
         </p>
         <div className="phone-actions">
           <PhoneButton variant="primary" source={OTHER[machine]} onClick={() => start(OTHER[machine])}>

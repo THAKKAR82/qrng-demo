@@ -34,7 +34,6 @@ interface TellApartPanelProps extends PanelBaseProps {
  * the session, drawn in the same ink so colour gives nothing away. A reveal names them.
  */
 export function TellApartPanel({
-  placement = 'inline',
   className,
   hideHeader,
   delay,
@@ -54,7 +53,6 @@ export function TellApartPanel({
   const side = classical.bitmap.size
   return (
     <Panel
-      placement={placement}
       className={className}
       hideHeader={hideHeader}
       delay={delay}

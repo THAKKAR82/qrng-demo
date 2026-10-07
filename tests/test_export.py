@@ -8,7 +8,7 @@ import jsonschema
 import numpy as np
 import pytest
 
-from pipeline import classical, export, runs
+from pipeline import analysis, classical, export, runs
 from pipeline.attacker import BiasAttacker
 from pipeline.paths import REPO_ROOT, RUNS_DIR, SAMPLE_DIR
 from pipeline.tasks import main
@@ -167,6 +167,18 @@ def test_export_writes_valid_demo_without_secrets(tmp_path: Path) -> None:
     assert meta["job_id"] == "d0testjob0000000000"
     assert meta["n_qubits"] == 100
     assert meta["qubits_selected_by_readout_error"] is True
+    assert meta["backend_num_qubits"] == 156
+
+    # The phone game's rounds and chance range come from Python (SPEC.md, Section 4.9).
+    beat = demo["games"]["beat"]
+    assert beat["rounds"] == export.BEAT_ROUNDS
+    chance = analysis.chance_range(export.BEAT_ROUNDS)
+    assert beat["chance_range"] == {
+        "low": chance.low,
+        "high": chance.high,
+        "coverage": 0.95,
+        "probability": pytest.approx(chance.probability, rel=1e-5),
+    }
 
     q = demo["quantum"]
     assert len(q["bitmap"]["rows"]) == 128

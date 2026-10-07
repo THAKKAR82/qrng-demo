@@ -121,7 +121,6 @@ function useTimeline(launchedAt: number | null): { phase: Phase; observed: numbe
  * with the 95% band. "Swap attackers" shows the cross-checks.
  */
 export function AttackerPanel({
-  placement = 'inline',
   className,
   hideHeader,
   delay,
@@ -164,7 +163,6 @@ export function AttackerPanel({
 
   return (
     <Panel
-      placement={placement}
       className={className}
       hideHeader={hideHeader}
       delay={delay}

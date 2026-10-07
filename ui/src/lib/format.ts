@@ -51,3 +51,18 @@ export function utcDate(value: string): string {
   const [, year, month, day, hour, minute] = match
   return `${Number(day)} ${MONTHS[Number(month) - 1]} ${year}, ${hour}:${minute} UTC`
 }
+
+/**
+ * How the screen names the machine a run used (SPEC.md, Section 4.8), from the backend's
+ * qubit count in the data: 156 → "a 156-qubit IBM quantum computer". Never the backend's
+ * name or the job ID, which stay in the presenter notes.
+ */
+export function ibmQuantumComputer(numQubits: number | null): string {
+  if (numQubits === null) {
+    return 'an IBM quantum computer'
+  }
+  // "an" where the number is spoken with a vowel sound: 8, 11, 18, 80–89, 800–899, 11,000 …
+  const digits = String(numQubits)
+  const vowel = digits.startsWith('8') || (digits.length % 3 === 2 && /^1[18]/.test(digits))
+  return `${vowel ? 'an' : 'a'} ${count(numQubits)}-qubit IBM quantum computer`
+}
