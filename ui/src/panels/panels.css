@@ -1,0 +1,537 @@
+/*
+ * Layout of the interactive panels (src/panels). Values come from tokens.css, so the same
+ * rules work on the presenter's stage (stage pixels) and in the phone view (CSS pixels);
+ * phone-specific stacking is under :root[data-view='audience'].
+ */
+
+/* ---- Shared ------------------------------------------------------------------ */
+
+.panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Small secondary text for technical terms (SPEC.md, Section 9.3). */
+.term {
+  display: inline;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+
+p.term {
+  display: block;
+}
+
+dt .term {
+  display: block;
+  font-weight: var(--weight-regular);
+}
+
+.action {
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  padding: 0 var(--space-3);
+  border: var(--line-hair) solid var(--color-ink);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.action--primary {
+  background: var(--color-ink);
+  color: var(--color-surface);
+}
+
+.action--big {
+  --action-fill: var(--color-ink);
+
+  min-width: calc(var(--touch-min) * 2);
+  min-height: calc(var(--touch-min) * 2);
+  font-family: var(--font-mono);
+  font-size: var(--text-h2);
+  border-color: var(--action-fill);
+  color: var(--action-fill);
+}
+
+.action--big.action--classical {
+  --action-fill: var(--color-classical-text);
+}
+
+.action--big.action--quantum {
+  --action-fill: var(--color-quantum-text);
+}
+
+.action:active:not(:disabled) {
+  background: var(--color-rule);
+}
+
+.action--primary:active:not(:disabled) {
+  background: var(--color-muted);
+}
+
+.action:disabled {
+  border-color: var(--color-rule);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.action:focus-visible {
+  outline-offset: calc(var(--line-hair) * 2);
+}
+
+.run-facts {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+
+.run-facts__label {
+  font-weight: var(--weight-semibold);
+  color: var(--color-ink);
+}
+
+.run-facts__detail {
+  white-space: normal;
+}
+
+/* ---- Machines ---------------------------------------------------------------- */
+
+.machines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--grid-gutter);
+}
+
+.machine {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.machine__name {
+  font-size: var(--text-lead);
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+}
+
+.machine__body {
+  display: grid;
+  grid-template-columns: calc(300 * var(--px)) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.machine__stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.machine__stats dt {
+  font-weight: var(--weight-medium);
+}
+
+.machine__stats dd {
+  font-size: var(--text-h3);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-numbers);
+}
+
+.machine__recent .bit-stream {
+  font-size: var(--text-body);
+}
+
+.machines__status {
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+}
+
+/* ---- Tell them apart ------------------------------------------------------- */
+
+.tell-apart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+.tell-apart--with-gauges {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: start;
+}
+
+.tell-apart__pictures {
+  display: flex;
+  gap: var(--space-5);
+}
+
+.tell-apart__picture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: calc(440 * var(--px));
+}
+
+.tell-apart--with-gauges .tell-apart__picture {
+  width: calc(380 * var(--px));
+}
+
+.tell-apart__caption {
+  font-size: var(--text-lead);
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+}
+
+.tell-apart__gauges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tell-apart__verdict {
+  font-size: var(--text-lead);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-heading);
+}
+
+/* ---- Guess game ------------------------------------------------------------- */
+
+.guess {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+.guess__play {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.guess__keys {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.guess__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: calc(var(--text-giant) * 1.2);
+}
+
+.guess__bit {
+  font-size: var(--text-giant);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+.guess__verdict {
+  font-size: var(--text-lead);
+  line-height: var(--leading-heading);
+}
+
+.guess__history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.guess__scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-8);
+}
+
+.guess__score {
+  font-size: var(--text-lead);
+  line-height: 1.2;
+}
+
+.guess__score .num {
+  font-size: var(--text-h3);
+  letter-spacing: var(--tracking-numbers);
+}
+
+.guess__who {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+}
+
+.guess__rows {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.guess__row {
+  display: contents;
+}
+
+.guess__row dt {
+  color: var(--color-muted);
+}
+
+.guess__rows .bit-stream {
+  font-size: var(--text-body);
+}
+
+/* ---- Attacker ---------------------------------------------------------------- */
+
+.attacker {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.attacker__watch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.attacker__plan {
+  max-width: var(--measure);
+}
+
+.attacker__picture {
+  width: calc(260 * var(--px));
+  margin-top: var(--space-2);
+}
+
+.attacker__phase {
+  font-size: var(--text-body);
+  color: var(--color-muted);
+}
+
+.attacker__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.attacker__placeholder {
+  min-height: calc(440 * var(--px));
+}
+
+.attacker__final {
+  font-size: var(--text-lead);
+  line-height: var(--leading-heading);
+}
+
+.attacker__verdict {
+  font-weight: var(--weight-medium);
+}
+
+/* ---- Hardware ------------------------------------------------------------- */
+
+.hardware {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.hardware__scroll {
+  max-width: calc(520 * var(--px));
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.hardware__map {
+  display: block;
+  height: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.hardware__edges line {
+  stroke: var(--color-rule);
+  stroke-width: 0.08;
+}
+
+.hardware__unused {
+  fill: var(--color-surface);
+  stroke: var(--color-reference);
+  stroke-width: 0.05;
+}
+
+.hardware__used {
+  stroke: var(--color-quantum-mark);
+  stroke-width: 0.04;
+}
+
+.hardware__flag {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: 0.06;
+}
+
+.hardware__selected {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: 0.12;
+}
+
+.hardware__details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.hardware__name {
+  font-size: var(--text-h3);
+  font-weight: var(--weight-semibold);
+  line-height: 1.1;
+}
+
+.hardware__flagged {
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+}
+
+.hardware__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.hardware__facts dt {
+  font-weight: var(--weight-medium);
+}
+
+.hardware__facts dd {
+  margin: 0;
+}
+
+.hardware__facts dd.num {
+  font-size: var(--text-h3);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-numbers);
+}
+
+.hardware__note {
+  font-weight: var(--weight-medium);
+}
+
+.hardware__select select {
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  padding: 0 var(--space-2);
+  border: var(--line-hair) solid var(--color-ink);
+  border-radius: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-body);
+}
+
+/* ---- Unpredictability --------------------------------------------------- */
+
+.unpredictability {
+  display: grid;
+  grid-template-columns: minmax(0, 6fr) minmax(0, 6fr);
+  gap: var(--space-4) var(--space-8);
+  align-items: start;
+}
+
+.unpredictability__numbers {
+  display: flex;
+  gap: var(--space-8);
+}
+
+.unpredictability__numbers .big-number__detail {
+  max-width: 18em;
+}
+
+.unpredictability__gauges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.unpredictability__verdict {
+  grid-column: 1 / -1;
+  font-size: var(--text-lead);
+  font-weight: var(--weight-medium);
+}
+
+.unpredictability__formula {
+  grid-column: 1 / -1;
+}
+
+/* ---- Phones: one column ---------------------------------------------------- */
+
+:root[data-view='audience'] .machines,
+:root[data-view='audience'] .tell-apart--with-gauges,
+:root[data-view='audience'] .guess,
+:root[data-view='audience'] .attacker,
+:root[data-view='audience'] .hardware,
+:root[data-view='audience'] .unpredictability {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-view='audience'] .machines {
+  row-gap: var(--space-6);
+}
+
+:root[data-view='audience'] .machine__body {
+  grid-template-columns: minmax(0, 9fr) minmax(0, 11fr);
+}
+
+:root[data-view='audience'] .tell-apart__pictures {
+  gap: var(--space-2);
+}
+
+:root[data-view='audience'] .tell-apart__picture,
+:root[data-view='audience'] .tell-apart--with-gauges .tell-apart__picture {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+:root[data-view='audience'] .guess {
+  gap: var(--space-4);
+}
+
+:root[data-view='audience'] .guess__rows .bit-stream,
+:root[data-view='audience'] .machine__recent .bit-stream {
+  font-size: 14px;
+}
+
+:root[data-view='audience'] .attacker__picture {
+  width: 160px;
+}
+
+:root[data-view='audience'] .attacker__placeholder {
+  min-height: 0;
+}
+
+:root[data-view='audience'] .hardware__scroll {
+  max-width: none;
+}
+
+:root[data-view='audience'] .hardware__facts {
+  gap: var(--space-2);
+}
+
+:root[data-view='audience'] .unpredictability__numbers {
+  flex-direction: column;
+  gap: var(--space-4);
+}

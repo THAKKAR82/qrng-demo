@@ -129,3 +129,8 @@
   padding-top: calc(var(--space-1) + env(safe-area-inset-top, 0px));
   border-width: 0 0 var(--line-hair);
 }
+
+.notes__step {
+  font-weight: var(--weight-regular);
+  color: var(--color-muted);
+}

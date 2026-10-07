@@ -1,0 +1,145 @@
+/* Layout of the talk's slides on the 12-column stage grid. Values come from tokens.css. */
+
+/* A panel that fills the scene body. */
+.talk__wide {
+  grid-column: 1 / -1;
+}
+
+/* ---- 1. Opening ------------------------------------------------------------- */
+
+.opening {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-columns), minmax(0, 1fr));
+  column-gap: var(--grid-gutter);
+  align-items: center;
+  padding: var(--margin-top) var(--margin-x) var(--margin-bottom);
+}
+
+.opening__title {
+  grid-column: 1 / span 7;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.opening__headline {
+  font-size: var(--text-hero);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-display);
+  text-wrap: balance;
+}
+
+.opening__lede {
+  font-size: var(--text-lead);
+  color: var(--color-muted);
+}
+
+.opening .invite {
+  grid-column: 9 / span 4;
+}
+
+/* ---- Phone invitation (slides 1 and 8) -------------------------------------- */
+
+.invite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.invite__code {
+  width: calc(360 * var(--px));
+}
+
+.invite__heading {
+  margin-top: var(--space-2);
+  font-size: var(--text-lead);
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+}
+
+.invite__url {
+  font-size: var(--text-lead);
+  overflow-wrap: anywhere;
+}
+
+/* ---- 2. Why randomness matters ------------------------------------------- */
+
+.uses {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8) var(--grid-gutter);
+}
+
+.uses__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: var(--line-hair) solid var(--color-rule);
+}
+
+.uses__name {
+  font-size: var(--text-h3);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-heading);
+}
+
+.uses__text {
+  max-width: var(--measure);
+  font-size: var(--text-lead);
+  color: var(--color-muted);
+}
+
+/* ---- 8. Explore ------------------------------------------------------------ */
+
+.explore {
+  grid-column: 1 / span 7;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.explore__item {
+  padding-top: var(--space-2);
+  border-top: var(--line-hair) solid var(--color-rule);
+  font-size: var(--text-h3);
+  line-height: var(--leading-heading);
+}
+
+.scene__body > .invite {
+  grid-column: 9 / span 4;
+}
+
+/* ---- 9. Takeaway ---------------------------------------------------------- */
+
+.takeaway {
+  grid-column: 1 / span 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.takeaway__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: var(--line-hair) solid var(--color-rule);
+}
+
+.takeaway__point {
+  font-size: var(--text-h2);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-display);
+}
+
+.takeaway__text {
+  max-width: var(--measure);
+  font-size: var(--text-lead);
+  color: var(--color-muted);
+}

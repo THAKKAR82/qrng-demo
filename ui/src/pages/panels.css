@@ -5,9 +5,3 @@
 :root[data-view='audience'] .panel-bitmap {
   max-width: 100%;
 }
-
-.panel-gauges {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}

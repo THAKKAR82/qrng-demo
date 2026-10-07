@@ -1,0 +1,14 @@
+.qr-code {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.qr-code__ground {
+  fill: var(--color-surface);
+}
+
+.qr-code__modules {
+  fill: var(--color-ink);
+}

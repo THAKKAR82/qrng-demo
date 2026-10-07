@@ -3,14 +3,16 @@ import { isSynthetic } from '../data/demo'
 import { NotesOverlay } from './NotesOverlay'
 import { Progress } from './Progress'
 import { SyntheticLabel } from './SyntheticLabel'
-import type { SceneDef } from './types'
+import { stepCount, type SceneDef } from './types'
 import { useDeckKeys } from './useDeckKeys'
 import './Deck.css'
 
 interface DeckProps {
   scenes: readonly SceneDef[]
   index: number
-  onNavigate: (index: number) => void
+  /** Step within the scene, from 0. */
+  step: number
+  onNavigate: (index: number, step: number) => void
   /** Switch to the other deck (presentation ↔ primitives); omit if there is none. */
   onTogglePrimitives?: () => void
 }
@@ -40,22 +42,40 @@ function toggleFullscreen(): void {
  * a progress indicator, presenter notes (N), fullscreen (F), and the synthetic-data
  * label whenever the data is synthetic.
  */
-export function Deck({ scenes, index, onNavigate, onTogglePrimitives }: DeckProps) {
+export function Deck({ scenes, index, step, onNavigate, onTogglePrimitives }: DeckProps) {
   const [notesOpen, setNotesOpen] = useState(false)
   const last = scenes.length - 1
   const current = Math.min(Math.max(index, 0), last)
   const scene = scenes[current]
+  const steps = scene === undefined ? 1 : stepCount(scene)
+  const currentStep = Math.min(Math.max(step, 0), steps - 1)
 
   const go = useCallback(
-    (target: number) => onNavigate(Math.min(Math.max(target, 0), last)),
-    [onNavigate, last],
+    (target: number, targetStep: number) => {
+      const index = Math.min(Math.max(target, 0), last)
+      const lastStep = stepCount(scenes[index]) - 1
+      onNavigate(index, Math.min(Math.max(targetStep, 0), lastStep))
+    },
+    [onNavigate, last, scenes],
   )
 
   useDeckKeys({
-    next: () => go(current + 1),
-    previous: () => go(current - 1),
-    first: () => go(0),
-    last: () => go(last),
+    next: () => {
+      if (currentStep < steps - 1) {
+        go(current, currentStep + 1)
+      } else if (current < last) {
+        go(current + 1, 0)
+      }
+    },
+    previous: () => {
+      if (currentStep > 0) {
+        go(current, currentStep - 1)
+      } else if (current > 0) {
+        go(current - 1, stepCount(scenes[current - 1]) - 1)
+      }
+    },
+    first: () => go(0, 0),
+    last: () => go(last, 0),
     toggleNotes: () => setNotesOpen((open) => !open),
     toggleFullscreen,
     togglePrimitives: () => onTogglePrimitives?.(),
@@ -75,10 +95,12 @@ export function Deck({ scenes, index, onNavigate, onTogglePrimitives }: DeckProp
       <main className="stage__frame" aria-roledescription="slide" aria-label={scene.title}>
         {/* The key remounts the scene, so its reveals replay each time it is shown. */}
         <div className="deck__scene" key={scene.id}>
-          {scene.render()}
+          {scene.render(currentStep)}
         </div>
         <Progress index={current} count={scenes.length} />
-        {notesOpen && <NotesOverlay scene={scene} next={scenes[current + 1]} />}
+        {notesOpen && (
+          <NotesOverlay scene={scene} step={currentStep} steps={steps} next={scenes[current + 1]} />
+        )}
         {isSynthetic && <SyntheticLabel />}
       </main>
     </div>

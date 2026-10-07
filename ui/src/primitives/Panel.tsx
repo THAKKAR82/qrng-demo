@@ -17,6 +17,11 @@ interface PanelProps {
   placement?: 'inline' | 'standalone'
   /** Extra class, for example to place the panel on the scene grid. */
   className?: string
+  /**
+   * Keep the title and description for screen readers only, for a panel inside a slide
+   * whose own title and lede already say the same thing.
+   */
+  hideHeader?: boolean
   delay?: number
 }
 
@@ -32,12 +37,13 @@ export function Panel({
   children,
   placement = 'inline',
   className,
+  hideHeader = false,
   delay = 0,
 }: PanelProps) {
   const classes = ['panel', `panel--${placement}`, 'reveal', className].filter(Boolean).join(' ')
   return (
     <section className={classes} style={revealDelay(delay)}>
-      <header className="panel__header">
+      <header className={hideHeader ? 'panel__header sr-only' : 'panel__header'}>
         <h2 className="panel__title">{title}</h2>
         {description !== undefined && <p className="panel__description">{description}</p>}
       </header>

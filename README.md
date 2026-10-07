@@ -61,9 +61,18 @@ The app in `ui/` has two views (SPEC.md, Section 9): the **presenter view**, a s
 | `cd ui && npm run preview` | **Presenting.** Builds into `ui/dist/` and serves it at the URL it prints. |
 | `cd ui && npm run build:demo` | The fallback: one self-contained `demo/index.html` that opens by double-click, offline. Same as `python -m pipeline.tasks ui-build`. |
 
-Keys in the presenter view: → / ↓ / PageDown / Space next, ← / ↑ / PageUp back, Home and End, N presenter notes, F fullscreen, P the primitives page. Clickers that send PageUp and PageDown work as-is. Add `#primitives` (or `?primitives`) to the URL to open the primitives page directly; it works under `file://` too.
+The presenter view opens on slide 1 of the nine-slide talk (SPEC.md, Section 9.4). Some slides have steps: "next" first reveals the next part of the slide. Every slide has presenter notes.
 
-For phones, put either build (`ui/dist/` or `demo/index.html`) on any static host and link to it with `?view=audience`, for example from a QR code on a slide. That copy is not connected to the presenter's laptop.
+Keys in the presenter view: → / ↓ / PageDown / Space next, ← / ↑ / PageUp back, Home and End, N presenter notes, F fullscreen, P the primitives page. Clickers that send PageUp and PageDown work as-is. On the interactive slides: 0 and 1 enter the room's guess, R reveals the pictures, and C and Q switch between the classical and quantum machines. Add `#primitives` (or `?primitives`) to the URL to open the primitives page directly; it works under `file://` too.
+
+For phones, put either build (`ui/dist/` or `demo/index.html`) on any static host and set the address phones should open when you build, so the opening slide shows it as a QR code (generated in the app, no online service):
+
+```sh
+cd ui
+VITE_AUDIENCE_URL='https://example.org/qrng/?view=audience' npm run build:demo
+```
+
+With no `VITE_AUDIENCE_URL`, the opening slide shows the title only. The phone view (`?view=audience`) has a guided tour through the panels in the order of the talk, plus an "Explore all" page. It is not connected to the presenter's laptop.
 
 Both builds use whatever `ui/src/data/demo.json` holds; `python -m pipeline.tasks export` refreshes it. If the data is synthetic, a label saying so stays on every screen.
 
@@ -76,7 +85,11 @@ node scripts/verify.mjs --url http://localhost:4173/ --synthetic no
 npm run build:demo && node scripts/verify.mjs --file ../demo/index.html --synthetic no
 ```
 
-Screenshots of every primitive at 1920×1080 and 1280×720, and of the audience view at 390×844, land in `data/scratch/ui-verify/`.
+The verifier walks every slide and step and every primitive at 1920×1080 and 1280×720, drives each panel (generate, reveal, guess, launch, tapping a qubit), and walks the phone tour at 390×844. Add `--qr yes` when the build has a `VITE_AUDIENCE_URL`, or `--qr no` when it doesn't. Screenshots land in `data/scratch/ui-verify/`.
+
+### Fonts
+
+The UI uses IBM Plex Sans and IBM Plex Mono, self-hosted in `ui/src/fonts/` under the SIL Open Font License 1.1 (full text in `ui/src/fonts/LICENSE.txt`). The files are IBM's own split subsets from `@ibm/plex-sans` 1.1.0 and `@ibm/plex-mono` 2.5.0, unmodified. `ui/src/fonts/README.md` records the source URLs and SHA-256 hashes.
 
 ## IBM Quantum account
 
