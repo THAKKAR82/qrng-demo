@@ -9,7 +9,7 @@ This is a short live demo for a mixed audience of technical and non-technical pe
 1. **Quantum computers are real and usable today.** We run a small job on a real IBM Quantum processor and show the real job: backend name, job ID, timestamp, and the physical qubits used.
 2. **Quantum random bits are unpredictable in a way that an ordinary classical random number generator is not.** We prove this by attacking both and measuring how well the attacker does.
 
-The demo has three parts: a Python pipeline that collects and analyses data, a Jupyter notebook that walks through the analysis end to end, and a web app that shows the results. The web app is a hybrid of a presentation and an app: the presenter drives a slide deck on a projector, some slides contain interactive panels, and audience members can optionally explore the same app on their own phones (Section 9).
+The demo has three parts: a Python pipeline that collects and analyses data, a Jupyter notebook that walks through the analysis end to end, and a web app that shows the results. The web app is a hybrid of a presentation and an app: the presenter drives a slide deck on a projector, some slides contain interactive panels, and audience members can optionally play two short games on their phones (Section 9).
 
 ## 2. The core claim
 
@@ -195,6 +195,7 @@ The Sampler runs locally on Qiskit Aer (a dev dependency). With a fake backend a
 - metadata for both sources (backend, job ID, date, qubit count, whether qubits were selected by readout error and from how many candidates, the run folder name, and `synthetic` and `sample` flags);
 - Shannon entropy for each stream (per qubit, mean, and pooled for quantum); per-qubit P(1), readout error, z-score against 0.5, and bias-attacker accuracy; bias summary statistics (mean P(1), mean and worst-case |P(1) − 0.5|); the bias tests below;
 - a 128×128 bitmap of the first 16,384 bits of each stream (these lie inside each attacker's training data for the default run sizes; export records whether they do);
+- **spot images** per stream, for the phone game "Spot the quantum machine": up to ten 64×64 images (4,096 consecutive bits each), from non-overlapping segments spread evenly through the stream outside the pool, each with its starting bit and its bits packed like the pool;
 - a **pool** per stream: 20,000 consecutive **held-out** bits starting right after the attacker's training data, with the attacker's prediction for every pool bit, both packed compactly (base64 of the bits packed 8 per byte, most significant bit first). The UI streams and games use only these bits, never repeating or wrapping them. The pool comes only from held-out data: export refuses to write it otherwise;
 - both attackers' accuracy, 95% Wilson interval, H∞ at the point estimate and at the conservative bound, and running accuracy downsampled to at most 500 points, with the 95% Wilson interval at every running point;
 - the cross-checks from Section 3.1, each with its accuracy, 95% interval, whether the interval contains 0.5, and its running accuracy and interval in the same form;
@@ -221,16 +222,16 @@ The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook 
 
 ## 9. Web app: presentation and audience
 
-`ui/` is a Vite + React + TypeScript app with no UI component library; charts are hand-written SVG and canvas. At build time it imports `ui/src/data/demo.json` (Section 7.1), exported from one run, so the presenter view needs no network and no server.
+`ui/` is a Vite + React + TypeScript app with no UI component library; charts are hand-written SVG and canvas. At build time it imports `ui/src/data/demo.json` (Section 7.1), exported from one run, so neither view needs a network or a server.
 
 ### 9.1 A hybrid of a presentation and an app
 
-- **Presenter view** (the default). A slide deck shown on a projector: full-screen scenes on a fixed 16:9 stage, designed for 1920×1080 and identical in proportion at 1280×720. It opens on the first slide. Navigation with the arrow keys and a presentation clicker (PageUp/PageDown, Space), a subtle progress indicator, presenter notes toggled with N (hidden by default), and fullscreen with F. A scene may have **steps**: "next" first reveals the scene's next step and only then moves on, and "back" from a scene's first step lands on the last step of the scene before. Some scenes contain interactive **panels** (Section 9.5).
-- **Audience view**, selected with the query parameter `?view=audience`. A phone-first page designed for portrait phones (390×844). It has two modes, switched at the top: a short **guided tour** that shows one panel at a time in the same order as the talk, with Back and Next buttons, and **explore**, which shows every panel on one scrolling page. People use it at their own pace, during or after the talk.
+- **Presenter view** (the default). A slide deck shown on a projector: full-screen scenes on a fixed 16:9 stage, designed for 1920×1080 and identical in proportion at 1280×720. It opens on the first slide. Navigation with the arrow keys and a presentation clicker (PageUp/PageDown, Space), a subtle progress indicator, presenter notes toggled with N (hidden by default), fullscreen with F, and a large QR code overlay for latecomers toggled with Q (Q again or Escape closes it). A scene may have **steps**: "next" first reveals the scene's next step and only then moves on, and "back" from a scene's first step lands on the last step of the scene before. Some scenes contain interactive **panels** (Section 9.5).
+- **Phone version** (the audience's view). A phone-first page designed for portrait phones (390×844) that offers **only the games** (Section 9.6): no slides, no presenter notes, no panels from the talk, no primitives page, and none of the presenter keys. It is the whole of the `build:web` build (Section 9.2), served at the site root, and the same screens open in the presenter builds with `?view=audience`, for rehearsals.
 
 **Audience participation is in person.** People raise hands and call out guesses, and the presenter presses keys to reveal answers and results on the projector. There is no room, no real-time sync between devices, no audience vote counting, and no backend of any kind.
 
-**Phones use a separate static copy.** A QR code on screen points to a static hosted copy of the same build (opened with `?view=audience`). That copy is not connected to the presenter's app: it never follows the presenter's slide, sends nothing, and receives nothing. The UI never implies that phones are connected to the talk.
+**Phones use a separate static copy.** A QR code on screen points to a static hosted copy of the phone version (the `build:web` build). That copy is not connected to the presenter's app: it never follows the presenter's slide, sends nothing, and receives nothing. The UI never implies that phones are connected to the talk.
 
 ### 9.2 Running it
 
@@ -239,20 +240,22 @@ The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook 
 | `npm run dev` | Local dev server for working on the UI. |
 | `npm run preview` | Builds the production app into `ui/dist/` and serves it locally. **The primary way to present.** |
 | `npm run build:demo` | Fallback: one self-contained `index.html` with all JS, CSS, fonts, and data inlined, written to the repo-level `demo/index.html` (committed). It opens by double-clicking, under `file://`, with the network off. |
+| `npm run build:web` | The phone version only, as a static site in `ui/dist-web/` (gitignored) with its `index.html` at the root, so no `?view=audience` is needed. Its bundle contains no presenter code: no deck, slides, notes, presenter keys, talk panels, or primitives page. `npm run preview:web` serves it locally. |
 
-The tasks `ui-dev` and `ui-build` (Section 10) run the first and third. Builds use relative URLs, so the static copy for phones is either build (`ui/dist/` or `demo/index.html`) placed on any static host; no server code is involved. The primitives page, which shows every reusable primitive rendered with real data from `demo.json`, opens with `#primitives` or `?primitives` (both work under `file://`) or the P key.
+The tasks `ui-dev` and `ui-build` (Section 10) run the dev server and `build:demo`. Builds use relative URLs, and `ui/dist-web/` goes on any static host for phones; no server code is involved. The primitives page, which shows every reusable primitive rendered with real data from `demo.json`, opens with `#primitives` or `?primitives` (both work under `file://`) or the P key.
 
-**The audience URL is a build-time setting.** `VITE_AUDIENCE_URL` (an environment variable when building, for example `VITE_AUDIENCE_URL=https://example.org/qrng/?view=audience npm run build:demo`) is the exact address phones should open. The opening slide shows it as a QR code, generated inside the app by a bundled library (never by an online service), and as short text without the `https://`. When the setting is empty or missing, the opening slide shows the title only. Only `http:` and `https:` URLs are accepted.
+**The audience URL is a build-time setting.** `VITE_AUDIENCE_URL` (an environment variable when building, for example `VITE_AUDIENCE_URL=https://example.org/qrng/ npm run build:demo`) is the exact address phones should open: the hosted `build:web` site for the talk, or the laptop's local network address for a rehearsal. The opening slide, slide 8, and the Q overlay show it as a QR code, generated inside the app by a bundled library (never by an online service), and as short text without the `https://`. When the setting is empty or missing, those places show no QR code (the Q overlay says no address was set). Only `http:` and `https:` URLs are accepted.
 
 ### 9.3 Design rules
 
 - **Tokens.** Colours, type, spacing, layout, and motion are CSS variables in one file, `ui/src/styles/tokens.css`. IBM Plex Sans for text and IBM Plex Mono for numbers and bits, self-hosted (no CDN), including the subsets needed for symbols such as ∞, ≈, ×, ±, →, and ₂. On the stage, body text is at least 24px at 1920×1080 and headline numbers at least 96px.
 - **Colour.** An off-white background, near-black text, and one muted grey for secondary text. Exactly two semantic colours, classical (orange) and quantum (blue), with the same hues as `pipeline/plotstyle.py`. The exact hues are used for chart marks; darker versions of the same hues, meeting WCAG AA on the background, are used for text and big numbers. No gradients, glassmorphism, decorative shadows, emoji, or stock icons.
 - **Motion.** Short transitions only (200–400 ms, ease-out), used to reveal results. `prefers-reduced-motion` turns them off.
-- **Panels.** An interactive section is a `Panel`: it sits inside a scene in the presenter view, or stands alone in the audience view's explore mode. Every control in a panel is at least 44 CSS px in both dimensions, and nothing depends on hover.
-- **Keys.** The deck's key handler ignores key events aimed at interactive elements (buttons, inputs, and anything with an interactive role), so Space or a digit pressed in a panel never also moves the deck. Panels on the current slide may listen for their own keys (0 and 1 for a guess, R for a reveal), which the deck never uses; they ignore the same interactive targets and any key with a modifier.
+- **Panels.** An interactive section of a slide is a `Panel`. Every control, in panels and in the phone games, is at least 44 CSS px in both dimensions, and nothing depends on hover.
+- **Keys.** The deck's key handler ignores key events aimed at interactive elements (buttons, inputs, and anything with an interactive role), so Space or a digit pressed in a panel never also moves the deck. The deck's keys: arrows, PageUp/PageDown, Space, Home, End, Escape, N (notes), F (fullscreen), P (primitives page), and Q (QR code overlay). Panels on the current slide may listen for their own keys, which the deck never uses: 0 and 1 for a guess, R for a reveal, and M to switch machine (classical ↔ quantum); they ignore the same interactive targets and any key with a modifier. The phone version answers no keys of its own.
+- **Scrolling.** The phone version uses ordinary page scrolling wherever content is taller than the screen: no fixed stage, no fixed-height page, and no touch handlers that block scrolling. Only the presenter's stage is fixed and does not scroll.
 - **Copy.** Plain English throughout. Technical terms (min-entropy, Shannon entropy, Wilson interval, Mersenne Twister, z-score) appear only in small secondary text.
-- **Responsive.** The presenter view is checked at 1920×1080 and 1280×720; the audience view at 390×844.
+- **Responsive.** The presenter view is checked at 1920×1080 and 1280×720; the phone version at 390×844 with touch, including real touch scrolling.
 
 ### 9.4 The presentation scenes
 
@@ -265,14 +268,15 @@ The slides, in order. Every slide has presenter notes.
 5. **Guess the next bit:** the Guess game, with a choice of machine.
 6. **Enter the attacker:** the Guess game with the attacker row on; a step brings in the Attacker panel.
 7. **Measuring unpredictability:** the Unpredictability panel.
-8. **Your turn: explore:** invites phone users to explore; a step shows the Hardware panel.
+8. **Your turn: play on your phone:** the QR code and short URL, large, while people play the phone games. With no URL set, the title and a line about the games only.
 9. **Takeaway:** quantum computers are real, accessible today, and produce randomness guaranteed by physics. The presenter notes carry the honest caveat about secure classical generators (Section 4.7) and the cross-check results.
+10. **Inside the quantum computer** (appendix, for questions): the Hardware panel. Its notes cover the flagged qubits and that they were kept.
 
-Presenter notes are in a panel toggled with the N key and hidden by default. If `demo.json` says `synthetic: true`, a label reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen of both views and can't be dismissed.
+Presenter notes are in a panel toggled with the N key and hidden by default. If `demo.json` says `synthetic: true`, a label reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen of both views, every screen of the phone version included, and can't be dismissed.
 
 ### 9.5 Panels
 
-Each panel works inside a slide and standalone in the audience view. All numbers come from `demo.json`, apart from the display-only counts in Section 7.
+Panels are the interactive parts of slides; the phone version does not use them. All numbers come from `demo.json`, apart from the display-only counts in Section 7.
 
 - **Machines.** Classical and quantum side by side (stacked on phones). "Generate bits" streams bits from each stream's pool, with a speed control; the bitmaps fill in live, and the fraction of ones and Shannon entropy of the bits shown so far update as bits arrive. When a pool runs out, generation stops and says "End of the recorded bits"; bits are never repeated or wrapped. The real run's backend, job ID, date, and qubit count are shown and labelled as the actual run (or as sample data when synthetic).
 - **Tell them apart.** Two unlabelled bitmaps, in an order chosen at random for each session, and a reveal (the R key, a button, or the slide's next step). No vote counting.
@@ -280,6 +284,15 @@ Each panel works inside a slide and standalone in the audience view. All numbers
 - **Attacker.** Choose a machine and launch. The observation phase is animated (624 numbers for classical, the training half for quantum), then the running-accuracy line replays with its 95% band. A toggle shows the cross-checks (each attacker on the other machine).
 - **Hardware.** The backend's qubits from Qiskit's bundled device description, with the qubits used highlighted and coloured by bias and the flagged qubits marked. Tapping or clicking selects the qubit nearest the pointer and shows its P(1), readout error, and z-score. On phones the map can be zoomed and scrolled sideways so single qubits are easy to tap. Secondary text says flagged qubits were kept, not removed. If there is no device description (synthetic data), the panel says so.
 - **Unpredictability.** The two min-entropy numbers with their intervals and conservative values, and the plain reading: "How many bits of genuine surprise each bit contains, for someone trying to predict it." The formula appears in small text.
+
+### 9.6 The phone version
+
+Screens, in order, each a normal scrolling page:
+
+1. **Intro:** a one-line title ("Can you beat a quantum computer?"), one plain sentence saying one machine is an ordinary computer formula and the other a real IBM quantum computer (or, with synthetic data, sample data standing in for one), and two large buttons, one for each game.
+2. **Spot the quantum machine:** five rounds. Each round shows two unlabelled 64×64 images, one from each machine (the spot images, Section 7.1), drawn in the same ink and in a random left/right order, and asks which came from the quantum computer. Tapping an image answers; the reveal names both. Every round uses a fresh pair, and no image is shown twice in a session (if all have been shown, the game says so). The end shows the score and the data-backed sentence: hard to tell apart by eye, followed by the rule-chosen `shannon_comparison` phrase.
+3. **Beat the attacker:** the player picks a machine, then guesses the next bit with large 0 and 1 buttons for 20 rounds. After each guess it shows the true bit, whether the player was right, and what the attacker guessed. The end shows the player's count and the attacker's count on the same bits side by side, with no comparative word chosen in the UI, followed by the rule-chosen phrase about that attacker over all unseen bits, and an invitation to try the other machine. Rounds follow the pool rules of the Guess game (random start, never repeated, stops at the end of the pool).
+4. **Closing:** one or two sentences of takeaway (quantum randomness is guaranteed by physics, and good classical generators are unpredictable in practice too, Section 4.7), with the real run's backend, job ID, and date in small text.
 
 ## 10. Tasks
 
@@ -297,7 +310,7 @@ Everything runs through `python -m pipeline.tasks <task>`.
 | `export [--run <id> \| --sample <name>]` | Writes `ui/src/data/demo.json` (Section 7.1). | Anyone |
 | `notebook [--run <id> \| --sample <name>]` | Executes the notebook into `data/scratch/`. | Anyone |
 | `ui-dev` | Starts the Vite dev server (`npm run dev`). | Anyone |
-| `ui-build` | Builds the single-file fallback `demo/index.html` from the current `demo.json` (`npm run build:demo`). | Anyone |
+| `ui-build` | Builds the single-file fallback `demo/index.html` from the current `demo.json` (`npm run build:demo`). The phone site is built with `npm run build:web` in `ui/`. | Anyone |
 | `build-demo --run <id>` | Exports one run (`export --run`) and then runs `ui-build`. | Anyone |
 | `check` | Runs ruff, mypy, pytest, and the UI lint and type check. | Anyone |
 | `refresh` | Runs `collect-quantum`, `analyze`, and `build-demo` in one go. | **Human only** |
