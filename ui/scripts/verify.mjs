@@ -6,6 +6,20 @@
 //   node scripts/verify.mjs --web http://localhost:4174/   # the phone site (npm run preview:web)
 //   add --synthetic yes|no to require (or forbid) the synthetic-data label
 //   add --qr yes|no to require (or forbid) the QR code (slide 1, slide 8, the Q overlay)
+//   node scripts/verify.mjs --url http://localhost:4173/ --live-mock
+//                                                          # the live run on slide 3, mocked
+//
+// Live run (SPEC.md, Section 6.4). In every ordinary run it checks the live control is
+// absent: no "Run on real quantum hardware now" button and no request to /api/live/ in
+// plain preview or under file://, and no live code at all in the single-file HTML (--file)
+// or in the phone site's files (--web). With --live-mock (and --url pointing at a plain
+// preview of ui/dist/) it plays the part of live-server inside the browser: it adds a
+// session token to the page and answers /api/live/ itself, so no Python server and no
+// IBM account are involved. It then checks slide 3 when the server is unarmed, when it
+// can't be reached, and when it is armed: a run that finishes (each stage, the job ID, the
+// fresh bits labelled and streamed, at both stage sizes), the 120-second timeout (with a
+// fake clock), a failed job, the server vanishing mid-run, and a refused start. Every API
+// request must carry the token.
 //
 // Presentation, at 1920×1080 and 1280×720: opens with no hash (it must land on slide 1),
 // walks every slide and every step to the end, saves a screenshot of each, checks fonts,
@@ -72,6 +86,14 @@ const PHONE = { width: 390, height: 844 }
 const SHORT_PHONE = { width: 375, height: 560 }
 const expectSynthetic = option('--synthetic') // "yes", "no", or undefined (report only)
 const expectQr = option('--qr') // "yes", "no", or undefined (report only)
+const liveMock = args.includes('--live-mock')
+if (liveMock && urlArg === undefined) {
+  console.error('--live-mock needs --url pointing at a plain preview of ui/dist/.')
+  process.exit(2)
+}
+// Strings that exist only in the live-run code; builds without live mode must not hold any.
+const LIVE_STRINGS = ['Run on real quantum hardware now', 'qrng-live-token', '/api/live/', 'X-QRNG-Live-Token', 'Fresh from']
+const LIVE_BUTTON = 'Run on real quantum hardware now'
 // Longest reveal on any scene is under 2 s.
 const SETTLE_MS = 2200
 
@@ -97,7 +119,8 @@ if (offline) {
   if (cssUrls.length > 0) {
     fail(`CSS references external resources: ${cssUrls.slice(0, 5).join(', ')}`)
   }
-  console.log(`single file: ${(html.length / 1024).toFixed(0)} KiB, no external references checked`)
+  for (const m of LIVE_STRINGS) if (html.includes(m)) fail(`single file contains live-run code: "${m}"`)
+  console.log(`single file: ${(html.length / 1024).toFixed(0)} KiB, no external references or live code checked`)
 }
 
 // Which fonts actually rendered the text on screen, from Chrome itself
@@ -136,6 +159,10 @@ async function openPage(size, query, hash, extra = {}) {
     if (m.type() === 'error' && !fromFontCheck.test(m.text().trim())) errors.push(m.text())
   })
   page.on('pageerror', (e) => errors.push(e.message))
+  // Without live-server there is no token, so the app must never ask for live mode.
+  page.on('request', (request) => {
+    if (request.url().includes('/api/live/')) fail(`request to the live API without live-server: ${request.url()}`)
+  })
   if (offline) {
     // file: and data: URLs load normally; anything that would reach a network fails.
     await page.route(/^(https?|wss?):/, (route) => {
@@ -338,6 +365,9 @@ async function talk(size, drivePanels) {
     // Machines: Generate fills the pictures and the counts.
     await page.goto(`${base}#3`)
     await page.waitForTimeout(500)
+    // Not served by live-server: no live control and no live status.
+    if ((await page.getByRole('button', { name: LIVE_BUTTON }).count()) > 0) fail('live control shown without live-server')
+    if ((await page.locator('.live-run').count()) > 0) fail('live-run status shown without live-server')
     await page.getByRole('button', { name: 'Fast', exact: true }).click()
     await page.getByRole('button', { name: 'Generate bits' }).click()
     await page.waitForTimeout(1200)
@@ -615,6 +645,7 @@ async function webBundle() {
   const text = (await Promise.all(bodies)).join('\n')
   if (text.length < 1000) fail('web bundle: could not read the site\'s files')
   for (const s of PRESENTER_STRINGS) if (text.includes(s)) fail(`web bundle contains presenter content: "${s}"`)
+  for (const m of LIVE_STRINGS) if (text.includes(m)) fail(`web bundle contains live-run code: "${m}"`)
   // The primitives page and the deck's routes don't exist here.
   for (const route of ['?primitives', '#primitives', '?view=presenter#3']) {
     await page.goto(`${base}${route}`)
@@ -625,16 +656,251 @@ async function webBundle() {
   await context.close()
 }
 
+// ---- Live run, mocked (--live-mock) -------------------------------------------------
+// The browser plays the part of live-server: a token in the page and /api/live/ answered
+// here. Nothing reaches a Python server or IBM.
+
+const MOCK_BACKEND = 'mock_backend'
+const MOCK_JOB = 'd3mockjob00000000000'
+const MOCK_RUN = '0123456789abcdef'
+
+function mockResult() {
+  const bytes = Buffer.alloc(2000 / 8)
+  let x = 20261007
+  for (let i = 0; i < bytes.length; i += 1) {
+    x = (x * 1103515245 + 12345) & 0x7fffffff
+    bytes[i] = (x >> 16) & 0xff
+  }
+  return {
+    backend: MOCK_BACKEND,
+    job_id: MOCK_JOB,
+    shots: 200,
+    n_qubits: 10,
+    n_bits: 2000,
+    physical_qubits: [3, 7, 12, 19, 24, 31, 40, 55, 61, 77],
+    qubit_selection: { method: 'lowest_readout_error', candidates: 156 },
+    bits: bytes.toString('base64'),
+    p_one: Array(10).fill(0.5),
+    fraction_ones: 0.5,
+    shannon_entropy: { pooled: 1, per_qubit_mean: 1 },
+    submitted_utc: '2026-10-07T14:30:00Z',
+    completed_utc: '2026-10-07T14:31:05Z',
+    qpu_seconds: 2.1,
+  }
+}
+
+const ARMED = (remaining) => ({ armed: true, backend: MOCK_BACKEND, runs_remaining: remaining, max_runs: 3, shots: 200, n_qubits: 10 })
+const UNARMED = { armed: false, backend: null, runs_remaining: 0, max_runs: 0, shots: null, n_qubits: null }
+const json = (route, status, body) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+
+/** A mocked live server: health, start, and a scripted list of status replies. */
+function armedServer({ statuses = [], start = { status: 202, body: { id: MOCK_RUN, stage: 'submitting' } }, vanish = false } = {}) {
+  let polls = 0
+  let remaining = 3
+  return async (route, request, pathname) => {
+    if (pathname === '/api/live/health' && request.method() === 'GET') return json(route, 200, ARMED(remaining))
+    if (pathname === '/api/live/runs' && request.method() === 'POST') {
+      if (start.status === 202) remaining -= 1
+      return json(route, start.status, start.body)
+    }
+    if (pathname === `/api/live/runs/${MOCK_RUN}` && request.method() === 'GET') {
+      if (vanish) return route.abort('connectionrefused')
+      const reply = statuses[Math.min(polls, statuses.length - 1)]
+      polls += 1
+      return json(route, 200, { id: MOCK_RUN, job_id: null, elapsed_seconds: null, error: null, result: null, ...reply })
+    }
+    fail(`unexpected live API call ${request.method()} ${pathname}`)
+    return json(route, 404, { error: 'Not found.' })
+  }
+}
+
+async function waitText(locator, pattern, what, timeout = 8000) {
+  const deadline = Date.now() + timeout
+  let text = ''
+  while (Date.now() < deadline) {
+    text = ((await locator.count()) > 0 ? await locator.first().textContent() : '') ?? ''
+    if (pattern.test(text)) return text
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  fail(`${what}: expected ${pattern}, saw "${text.trim()}"`)
+  return text
+}
+
+async function notesText(page) {
+  await page.keyboard.press('n')
+  const text = ((await page.locator('.notes__body').textContent()) ?? '').trim()
+  await page.keyboard.press('n')
+  return text
+}
+
+async function liveScenario(name, { size = PRESENTER_SIZES[0], server, fakeClock = false }, check) {
+  const tag = `live-${name}-${size.width}x${size.height}`
+  console.log(`\n${tag}`)
+  const token = `verify-${name}-token`
+  const context = await browser.newContext({ viewport: size, deviceScaleFactor: 1 })
+  const page = await context.newPage()
+  const errors = []
+  // A refused connection is logged by Chrome itself; anything else is an app error.
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text())
+  })
+  page.on('pageerror', (e) => errors.push(e.message))
+  const calls = []
+  await page.route(
+    (url) => url.pathname.endsWith('/') || url.pathname.endsWith('/index.html'),
+    async (route) => {
+      if (route.request().resourceType() !== 'document') return route.continue()
+      const response = await route.fetch()
+      const html = (await response.text()).replace('</head>', `<meta name="qrng-live-token" content="${token}" /></head>`)
+      return route.fulfill({ response, body: html })
+    },
+  )
+  await page.route(/\/api\/live\//, async (route) => {
+    const request = route.request()
+    const { pathname } = new URL(request.url())
+    const sent = request.headers()['x-qrng-live-token']
+    calls.push({ method: request.method(), pathname })
+    if (sent !== token) fail(`${tag}: ${request.method()} ${pathname} without the session token`)
+    return server(route, request, pathname)
+  })
+  if (fakeClock) await page.clock.install()
+  await page.goto(`${base}#3`)
+  await page.evaluate(() => document.fonts.ready)
+  await page.waitForTimeout(800)
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('DOM.enable')
+  await cdp.send('CSS.enable')
+  await check({ page, calls, tag })
+  const { fallbacks } = await fontReport(cdp)
+  for (const f of fallbacks) fail(`${tag}: ${f}`)
+  for (const o of await offStage(page)) fail(`${tag}: off the stage: ${o}`)
+  await page.screenshot({ path: path.join(outDir, `${tag}.png`) })
+  for (const e of errors) fail(`${tag} console: ${e}`)
+  await context.close()
+}
+
+const RECORDED = /showing (the run from \d{1,2} [A-Z][a-z]+ \d{4}, \d{2}:\d{2} UTC|the recorded sample data)\./
+
+async function liveChecks() {
+  await liveScenario('unarmed', { server: (route, request, pathname) => {
+    if (pathname === '/api/live/health') return json(route, 200, UNARMED)
+    fail(`unarmed: unexpected ${request.method()} ${pathname}`)
+    return json(route, 503, { error: 'Live mode is not available.' })
+  } }, async ({ page, calls, tag }) => {
+    if ((await page.getByRole('button', { name: LIVE_BUTTON }).count()) > 0) fail(`${tag}: live control shown`)
+    if ((await page.locator('.live-run').count()) > 0) fail(`${tag}: live status shown`)
+    if (/Live run/.test(await notesText(page))) fail(`${tag}: notes mention the live run`)
+    const asked = calls.map((c) => `${c.method} ${c.pathname}`)
+    if (asked.join() !== 'GET /api/live/health') fail(`${tag}: expected one health check, saw ${asked.join(', ')}`)
+  })
+
+  await liveScenario('unreachable', { server: (route) => route.abort('connectionrefused') }, async ({ page, tag }) => {
+    if ((await page.getByRole('button', { name: LIVE_BUTTON }).count()) > 0) fail(`${tag}: live control shown`)
+    if ((await page.locator('.live-run').count()) > 0) fail(`${tag}: live status shown`)
+    await page.getByRole('button', { name: 'Fast', exact: true }).click()
+    await page.getByRole('button', { name: 'Generate bits' }).click()
+    await page.waitForTimeout(800)
+    await waitText(page.locator('.machines__status'), /recorded bits from each machine/, `${tag}: recorded bits still stream`)
+    if ((await page.locator('.run-facts', { hasText: 'The actual run:' }).count()) === 0 && (await page.locator('.run-facts', { hasText: 'Sample data' }).count()) === 0) {
+      fail(`${tag}: the recorded run's facts are missing`)
+    }
+  })
+
+  for (const size of PRESENTER_SIZES) {
+    await liveScenario('done', { size, server: armedServer({ statuses: [
+      { stage: 'submitted', job_id: MOCK_JOB },
+      { stage: 'queued', job_id: MOCK_JOB, elapsed_seconds: 5 },
+      { stage: 'running', job_id: MOCK_JOB, elapsed_seconds: 9 },
+      { stage: 'done', job_id: MOCK_JOB, result: mockResult() },
+    ] }) }, async ({ page, calls, tag }) => {
+      const button = page.getByRole('button', { name: LIVE_BUTTON, exact: true })
+      if ((await button.count()) !== 1) {
+        fail(`${tag}: live control missing`)
+        return
+      }
+      const box = await button.boundingBox()
+      const scale = size.width / 1920
+      if (box === null || box.width < 44 * scale || box.height < 44 * scale) fail(`${tag}: live button under 44 px`)
+      if (!/Live run/.test(await notesText(page))) fail(`${tag}: notes don't explain the live run`)
+      await page.getByRole('button', { name: 'Fast', exact: true }).click()
+      await button.click()
+      // The button gives up focus, so the clicker still drives the deck.
+      if ((await page.evaluate(() => document.activeElement?.tagName)) === 'BUTTON') fail(`${tag}: live button kept focus`)
+      const status = page.locator('.live-run')
+      await waitText(status, /Sending a job to IBM Quantum mock_backend\./, `${tag}: submitting`)
+      await waitText(status, new RegExp(`Sent to mock_backend.*Job ${MOCK_JOB}\\.`), `${tag}: submitted with job ID`)
+      await waitText(status, new RegExp(`Waiting in IBM's queue: 0:05\\.\\s*Job ${MOCK_JOB}`), `${tag}: queued with time`)
+      await waitText(status, /Running on mock_backend now\./, `${tag}: running`)
+      await waitText(status, /Fresh bits from mock_backend are playing on the quantum machine\..*\(2,000 bits\), so its numbers are noisy; the headline numbers come from the full run\./, `${tag}: done`)
+      await waitText(page.locator('.machine--quantum .run-facts'), /^Fresh from mock_backend, 7 October 2026, 14:31 UTC: job d3mockjob00000000000, 10 qubits × 200 shots \(qubits picked for lowest readout error from 156\)\.$/, `${tag}: fresh label`)
+      await waitText(page.locator('.machines__status'), /^End of the fresh bits\.$/, `${tag}: fresh bits streamed to the end`)
+      if ((await page.locator('.machine--quantum .machine__stats dd.num').first().textContent())?.trim() === '–') fail(`${tag}: no counts for the fresh bits`)
+      const posts = calls.filter((c) => c.method === 'POST')
+      if (posts.length !== 1) fail(`${tag}: expected one POST, saw ${posts.length}`)
+      if (size === PRESENTER_SIZES[0]) {
+        await page.keyboard.press('PageDown')
+        if ((await hashOf(page)) !== '#4') fail(`${tag}: after the live run, PageDown went to ${await hashOf(page)}`)
+        await page.keyboard.press('PageUp')
+        await page.waitForTimeout(400)
+        // Back on the slide, the fresh run is still shown.
+        await waitText(page.locator('.machine--quantum .run-facts'), /^Fresh from mock_backend/, `${tag}: fresh run kept across slides`)
+      }
+    })
+  }
+
+  await liveScenario('timeout', { fakeClock: true, server: armedServer({ statuses: [{ stage: 'queued', job_id: MOCK_JOB, elapsed_seconds: 30 }] }) }, async ({ page, calls, tag }) => {
+    await page.getByRole('button', { name: LIVE_BUTTON }).click()
+    await waitText(page.locator('.live-run'), /Waiting in IBM's queue/, `${tag}: queued`)
+    if ((await page.locator('.live-run', { hasText: 'busy' }).count()) > 0) fail(`${tag}: fell back before the timeout`)
+    await page.clock.fastForward('01:50')
+    await page.waitForTimeout(300)
+    if ((await page.locator('.live-run', { hasText: 'busy' }).count()) > 0) fail(`${tag}: fell back before 120 s`)
+    await page.clock.fastForward('00:11')
+    const text = await waitText(page.locator('.live-run'), /^IBM's queue is busy; showing /, `${tag}: timeout label`)
+    if (!RECORDED.test(text)) fail(`${tag}: label does not name the recorded run: "${text}"`)
+    if (!new RegExp(`Job ${MOCK_JOB} may still finish on IBM\\.`).test(text)) fail(`${tag}: no note that the job may still finish`)
+    if ((await page.locator('.machine--quantum .run-facts', { hasText: 'Fresh from' }).count()) > 0) fail(`${tag}: fresh label after a timeout`)
+    const polls = () => calls.filter((c) => c.pathname.startsWith('/api/live/runs/')).length
+    const before = polls()
+    await page.clock.fastForward('00:05')
+    await page.waitForTimeout(300)
+    if (polls() > before) fail(`${tag}: kept polling after giving up`)
+    if (!/may still finish on IBM/.test(await notesText(page))) fail(`${tag}: notes don't say the job may still finish`)
+  })
+
+  await liveScenario('failed', { server: armedServer({ statuses: [{ stage: 'queued', job_id: MOCK_JOB, elapsed_seconds: 2 }, { stage: 'failed', job_id: MOCK_JOB, error: 'The job ended as ERROR.' }] }) }, async ({ page, tag }) => {
+    await page.getByRole('button', { name: LIVE_BUTTON }).click()
+    const text = await waitText(page.locator('.live-run'), /^The live run didn't finish; showing /, `${tag}: failure label`)
+    if (!RECORDED.test(text)) fail(`${tag}: label does not name the recorded run: "${text}"`)
+    if ((await page.locator('.machine--quantum .run-facts', { hasText: 'Fresh from' }).count()) > 0) fail(`${tag}: fresh label after a failure`)
+  })
+
+  await liveScenario('vanished', { server: armedServer({ vanish: true }) }, async ({ page, tag }) => {
+    await page.getByRole('button', { name: LIVE_BUTTON }).click()
+    await waitText(page.locator('.live-run'), /^The live run didn't finish; showing /, `${tag}: failure label when the server is gone`)
+  })
+
+  await liveScenario('refused', { server: armedServer({ start: { status: 409, body: { error: 'A live run is still in progress.' } } }) }, async ({ page, tag }) => {
+    await page.getByRole('button', { name: LIVE_BUTTON }).click()
+    await waitText(page.locator('.live-run'), /^A live run is still in progress\.$/, `${tag}: refusal shown`)
+    if ((await page.locator('.machine--quantum .run-facts', { hasText: 'Fresh from' }).count()) > 0) fail(`${tag}: fresh label after a refusal`)
+  })
+}
+
 const browser = await chromium.launch()
 try {
-  if (web) {
+  if (liveMock) {
+    await liveChecks()
+  } else if (web) {
     await webBundle()
   } else {
     for (const [i, size] of PRESENTER_SIZES.entries()) await talk(size, i === 0)
     for (const size of PRESENTER_SIZES) await presenter(size)
   }
-  await phone(PHONE, true)
-  await phone(SHORT_PHONE, false)
+  if (!liveMock) {
+    await phone(PHONE, true)
+    await phone(SHORT_PHONE, false)
+  }
 } finally {
   await browser.close()
 }

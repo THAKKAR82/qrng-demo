@@ -61,6 +61,7 @@ The app in `ui/` has two parts (SPEC.md, Section 9): the **presenter view**, a s
 | `cd ui && npm run preview` | **Presenting.** Builds into `ui/dist/` and serves it at the URL it prints. |
 | `cd ui && npm run build:demo` | The fallback: one self-contained `demo/index.html` that opens by double-click, offline. Same as `python -m pipeline.tasks ui-build`. |
 | `cd ui && npm run build:web` | **The phone site.** Only the phone version, in `ui/dist-web/`, with `index.html` at the root. Upload that folder to any static host. `npm run preview:web` serves it locally. |
+| `python -m pipeline.tasks live-server` | **Optional: presenting with a live IBM run on slide 3.** Serves the last `npm run build` from `ui/dist/` on this laptop only. Human only; see [Live run on slide 3](#live-run-on-slide-3). |
 
 The presenter view opens on slide 1 of the ten-slide talk (SPEC.md, Section 9.4; slide 10 is an appendix for questions). Some slides have steps: "next" first reveals the next part of the slide. Every slide has presenter notes.
 
@@ -101,6 +102,8 @@ node scripts/verify.mjs --web http://localhost:4174/ --synthetic no
 ```
 
 The verifier walks every slide and step and every primitive at 1920×1080 and 1280×720, drives each panel, checks slide 8 and the Q overlay, and plays both phone games at 390×844 with touch, including real touch scrolling. With `--web` it checks only the phone site, and also that its bundle holds no presenter content. Add `--qr yes` when the build has a `VITE_AUDIENCE_URL`, or `--qr no` when it doesn't. Screenshots land in `data/scratch/ui-verify/`.
+
+Every run also checks that the live-run control is absent: from plain preview, from `demo/index.html` (which holds no live code at all), and from the phone site. To check the live run itself without IBM or the live server, run `node scripts/verify.mjs --url http://localhost:4173/ --live-mock` against a plain `npm run preview`. The browser then stands in for the live server and checks slide 3 when the server is unarmed, when it can't be reached, and when it is armed: a finished run, the two-minute timeout, a failed job, the server going away mid-run, and a refused start.
 
 ### Fonts
 
@@ -154,6 +157,26 @@ This works best on the Mac that submitted the job, which keeps a submission reco
 
 Useful flags: `--shots N`, `--qubits N`, `--backend ibm_fez`, `--no-qubit-selection`, `--physical-qubits 3,7,12`. The run lands in `data/runs/<UTC time>_<backend>/` with `quantum.npz`, `quantum.json`, and the matching `classical.npz` and `classical.json`. Commit that folder.
 
+### Live run on slide 3
+
+Optional, and only on the presenter's laptop: `live-server` serves the presenter app with a "Run on real quantum hardware now" button on slide 3. Pressing it runs one small job (10 qubits, 200 shots, 2,000 bits) on real hardware and streams the fresh bits into the quantum machine. If no result arrives within two minutes, or anything fails, the slide says so and keeps the recorded run. See SPEC.md, Section 6.4.
+
+**Build first, with the hosted phone address.** `live-server` serves whatever is in `ui/dist/` and never rebuilds it, so the QR codes on slides 1 and 8 and the Q overlay come from your last build. For the real talk:
+
+```sh
+cd ui
+VITE_AUDIENCE_URL='https://example.org/qrng/' npm run build   # the hosted phone site's address
+cd ..
+source .venv/bin/activate
+python -m pipeline.tasks live-server              # or --backend ibm_fez, --port 8765
+```
+
+At startup it prints the `VITE_AUDIENCE_URL` baked into the build it is about to serve, or warns that none is set; rebuild if it isn't the address you expect. It then arms itself with the collector's checks: an interactive terminal, the Open Plan, and the remaining allowance, which must cover all three runs. It shows the backend, the 10 lowest-readout-error qubits, 200 shots, at most 3 live runs this session, and a 30 s execution limit per run, and you type the backend name to arm it. If you type anything else, or a check fails, it still serves the app, but without the live button. Open the address it prints (`http://127.0.0.1:8765/`) in the browser on the same laptop. It listens on 127.0.0.1 only, so phones and other machines can't reach it, and there is no option to change that.
+
+Finished live runs are saved to `data/live/` on that laptop. That folder is gitignored, never exported, and doesn't replace the committed run. A job the slide gave up on may still finish on IBM; the server saves it if it finishes while the server is still running. Ctrl-C stops the server and lists any jobs that hadn't finished.
+
+Plain `npm run preview`, `demo/index.html`, and the phone site never show the live button.
+
 ### Offline data
 
 ```sh
@@ -164,4 +187,4 @@ python -m pipeline.tasks collect-classical --sample <name> --bits N # standalone
 
 ## Working with Claude Code
 
-`CLAUDE.md` has the rules Claude follows here, and `.claude/settings.json` has deny rules that back them up. Claude never runs real collection, never reads `~/.qiskit`, and never pushes. It commits locally, and you review and push.
+`CLAUDE.md` has the rules Claude follows here, and `.claude/settings.json` has deny rules that back them up. Claude never runs real collection or the live server, never reads `~/.qiskit`, and never pushes. It commits locally, and you review and push.

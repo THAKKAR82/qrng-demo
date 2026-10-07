@@ -6,6 +6,7 @@ QiskitRuntimeService, and never touches ~/.qiskit or any credentials. Collector 
 are imported lazily, inside the task that needs them.
 
 ``collect-quantum`` (without ``--dry-run``) is for the human only: it submits a real job.
+``live-server`` is for the human only too: once armed, it can submit real jobs.
 """
 
 from __future__ import annotations
@@ -253,6 +254,35 @@ def collect_quantum(args: argparse.Namespace) -> int:
     return quantum.run_task(cfg)
 
 
+LIVE_DEFAULT_PORT = 8765  # pipeline.live.DEFAULT_PORT; not imported so parsing stays light
+
+
+def _port(text: str) -> int:
+    value = int(text)
+    if not 1024 <= value <= 65535:
+        raise argparse.ArgumentTypeError("must be between 1024 and 65535")
+    return value
+
+
+def _configure_live_server(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--port", type=_port, default=LIVE_DEFAULT_PORT)
+    parser.add_argument("--backend", help="backend name (default: least busy operational)")
+    # Accepted only to refuse them clearly: the server binds to 127.0.0.1 and nothing else.
+    parser.add_argument("--host", help=argparse.SUPPRESS)
+    parser.add_argument("--bind", help=argparse.SUPPRESS)
+
+
+def live_server(args: argparse.Namespace) -> int:
+    if args.host is not None or args.bind is not None:
+        print(
+            "Refusing: live-server binds to 127.0.0.1 only and cannot listen on any other address."
+        )
+        return 2
+    from pipeline import live
+
+    return live.run_task(port=args.port, backend_name=args.backend)
+
+
 def _configure_export(parser: argparse.ArgumentParser) -> None:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--run", help="run folder under data/runs/ (default: the latest)")
@@ -356,6 +386,13 @@ TASKS: dict[str, Task] = {
             "HUMAN ONLY: submit a real IBM Quantum job (--dry-run is safe, offline).",
             collect_quantum,
             _configure_collect_quantum,
+            human_only=True,
+        ),
+        Task(
+            "live-server",
+            "HUMAN ONLY: serve ui/dist/ with the live-run API on 127.0.0.1 (can submit real jobs).",
+            live_server,
+            _configure_live_server,
             human_only=True,
         ),
         Task(

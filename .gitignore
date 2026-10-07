@@ -2,6 +2,8 @@
 data/scratch/*
 !data/scratch/.gitkeep
 /scratch/
+# Live runs from live-server (SPEC.md, Section 6.4): local to the presenter's laptop
+data/live/
 
 # Secrets and environment files (never commit)
 .env

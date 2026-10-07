@@ -535,3 +535,13 @@ dt .term {
   flex-direction: column;
   gap: var(--space-4);
 }
+
+/* ---- Live run (live-server only, SPEC.md, Section 6.4) ------------------------ */
+
+.live-run {
+  margin-top: var(--space-1);
+}
+
+.live-run__notice {
+  color: var(--color-muted);
+}

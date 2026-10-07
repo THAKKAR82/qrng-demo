@@ -55,8 +55,56 @@ def test_registered_tasks_and_human_only() -> None:
         "export",
         "ui-dev",
         "ui-build",
+        "live-server",
     }
-    assert {name for name, task in TASKS.items() if task.human_only} == {"collect-quantum"}
+    assert {name for name, task in TASKS.items() if task.human_only} == {
+        "collect-quantum",
+        "live-server",
+    }
+
+
+def test_human_only_tasks_are_denied_to_claude() -> None:
+    settings = json.loads((REPO_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    deny = settings["permissions"]["deny"]
+    for name, task in TASKS.items():
+        if task.human_only:
+            assert f"Bash(*pipeline.tasks {name}*)" in deny
+            assert f"Bash(*pipeline/tasks.py {name}*)" in deny
+
+
+@pytest.mark.parametrize("flag", ["--host", "--bind"])
+@pytest.mark.parametrize("address", ["0.0.0.0", "127.0.0.1", "192.168.1.20"])
+def test_live_server_refuses_any_bind_option(
+    flag: str, address: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from pipeline import live
+
+    def never(**_: object) -> int:
+        raise AssertionError("live-server must refuse before starting")
+
+    monkeypatch.setattr(live, "run_task", never)
+    assert main(["live-server", flag, address]) == 2
+    assert "127.0.0.1 only" in capsys.readouterr().out
+
+
+def test_live_server_cli_passes_port_and_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pipeline import live
+
+    seen: list[dict[str, object]] = []
+
+    def fake_run_task(**kwargs: object) -> int:
+        seen.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(live, "run_task", fake_run_task)
+    assert main(["live-server"]) == 0
+    assert main(["live-server", "--port", "9000", "--backend", "ibm_fez"]) == 0
+    assert seen == [
+        {"port": live.DEFAULT_PORT, "backend_name": None},
+        {"port": 9000, "backend_name": "ibm_fez"},
+    ]
+    with pytest.raises(SystemExit):
+        main(["live-server", "--port", "80"])
 
 
 def test_collect_quantum_cli_builds_config(monkeypatch: pytest.MonkeyPatch) -> None:

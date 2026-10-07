@@ -344,8 +344,16 @@ def confirm_backend(sub: Submission, input_fn: InputFn) -> None:
 # --- Sampler, job, result ----------------------------------------------------------------
 
 
-def sampler_options(shots: int) -> dict[str, Any]:
-    """Every client-side Sampler option, set explicitly. No mitigation, twirling, or DD."""
+def sampler_options(
+    shots: int,
+    *,
+    max_execution_time: int = MAX_EXECUTION_SECONDS,
+    job_tags: Sequence[str] = ("qrng-demo",),
+) -> dict[str, Any]:
+    """Every client-side Sampler option, set explicitly. No mitigation, twirling, or DD.
+
+    Live runs (``pipeline.live``) change only the execution limit and the job tags.
+    """
     return {
         "default_shots": shots,
         "dynamical_decoupling": {
@@ -370,7 +378,7 @@ def sampler_options(shots: int) -> dict[str, Any]:
             "shots_per_randomization": "auto",
             "strategy": "active-accum",
         },
-        "max_execution_time": MAX_EXECUTION_SECONDS,
+        "max_execution_time": max_execution_time,
         "simulator": {
             "angle_decimals": 5,
             "layer_noise_model": None,
@@ -380,7 +388,7 @@ def sampler_options(shots: int) -> dict[str, Any]:
         "experimental": {},
         "environment": {
             "log_level": "WARNING",
-            "job_tags": ["qrng-demo"],
+            "job_tags": list(job_tags),
             "private": False,
             "max_execution_time": None,
             "image": None,
@@ -553,6 +561,32 @@ def _parse_time(value: Any) -> datetime | None:
     return moment if moment.tzinfo is not None else moment.astimezone()
 
 
+def result_bits(job: Any, record: dict[str, Any]) -> npt.NDArray[np.uint8]:
+    """The finished job's bits as ``(shots, n_qubits)`` uint8 (SPEC.md, Section 5.2)."""
+    result = job.result()
+    n_qubits = len(record["qubits"])
+    shots = record["job"]["shots"]
+    bit_array = result[0].data.meas
+    return bits_from_bitarray(bit_array, n_qubits, shots or int(bit_array.num_shots))
+
+
+def completed_record(
+    job: Any, record: dict[str, Any], bits: npt.NDArray[np.uint8]
+) -> dict[str, Any]:
+    """A copy of the submission ``record`` completed with what the finished job reports."""
+    meta = copy.deepcopy(record)
+    now = runs.utc_now()
+    details = _job_details(job)
+    finished = _parse_time((details["api_timestamps"] or {}).get("finished"))
+    meta["created_utc"] = runs.iso_utc(now)
+    meta["job"]["shots"] = int(bits.shape[0])
+    meta["job"]["completed_utc"] = runs.iso_utc(finished or now)
+    meta["job"]["api_timestamps"] = details["api_timestamps"]
+    meta["job"]["qpu_seconds"] = details["qpu_seconds"]
+    meta["bits"]["shape"] = list(bits.shape)
+    return meta
+
+
 def finish_run(
     job: Any,
     record: dict[str, Any],
@@ -574,22 +608,8 @@ def finish_run(
             message = f": {redact(str(job.error_message()))}"
         raise JobFailed(f"Job {job_id} ended as {status}{message}. Nothing was written.")
 
-    result = job.result()
-    n_qubits = len(record["qubits"])
-    shots = record["job"]["shots"]
-    bit_array = result[0].data.meas
-    bits = bits_from_bitarray(bit_array, n_qubits, shots or int(bit_array.num_shots))
-
-    meta = copy.deepcopy(record)
-    now = runs.utc_now()
-    details = _job_details(job)
-    finished = _parse_time((details["api_timestamps"] or {}).get("finished"))
-    meta["created_utc"] = runs.iso_utc(now)
-    meta["job"]["shots"] = int(bits.shape[0])
-    meta["job"]["completed_utc"] = runs.iso_utc(finished or now)
-    meta["job"]["api_timestamps"] = details["api_timestamps"]
-    meta["job"]["qpu_seconds"] = details["qpu_seconds"]
-    meta["bits"]["shape"] = list(bits.shape)
+    bits = result_bits(job, record)
+    meta = completed_record(job, record, bits)
 
     run_dir: Path = runs_dir / str(meta["run_id"])
     if run_dir.exists():
@@ -612,10 +632,10 @@ def finish_run(
     return run_dir
 
 
-def _validated_options(shots: int) -> dict[str, Any]:
+def _validated_options(shots: int, **overrides: Any) -> dict[str, Any]:
     from qiskit_ibm_runtime.options_models import SamplerOptions
 
-    options = sampler_options(shots)
+    options = sampler_options(shots, **overrides)
     dumped: dict[str, Any] = SamplerOptions(**options).model_dump(mode="json")
     if dumped != options:
         raise CollectionAborted("Sampler options changed shape; update sampler_options().")

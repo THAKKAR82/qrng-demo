@@ -11,6 +11,7 @@ import { revealDelay } from '../lib/motion'
 import { AttackerPanel } from '../panels/AttackerPanel'
 import { GuessGamePanel } from '../panels/GuessGamePanel'
 import { HardwarePanel } from '../panels/HardwarePanel'
+import { LiveNotes } from '../panels/LiveRun'
 import { MachinesPanel } from '../panels/MachinesPanel'
 import { TellApartPanel } from '../panels/TellApartPanel'
 import { UnpredictabilityPanel } from '../panels/UnpredictabilityPanel'
@@ -102,6 +103,7 @@ export const talkScenes: readonly SceneDef[] = [
         <p>
           Point at the numbers: both sit near half 1s, and the ordinary randomness score is close to 1 for both.
         </p>
+        {__QRNG_LIVE__ && <LiveNotes />}
         <RunNote />
       </>
     ),

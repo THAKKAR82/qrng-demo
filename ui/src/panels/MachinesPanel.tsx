@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { pools } from '../data/demo'
 import type { Source } from '../data/types'
 import { count, fixed, percent } from '../lib/format'
-import { advanceBy, readPool } from '../lib/pool'
+import { useLiveRun } from '../lib/live'
+import { advanceBy } from '../lib/pool'
 import { useSessionNumber } from '../lib/session'
 import { SOURCES } from '../lib/sources'
 import { bitStats, countOnes } from '../lib/stats'
@@ -11,6 +12,7 @@ import { BitStream } from '../primitives/BitStream'
 import { Num } from '../primitives/Num'
 import { Panel } from '../primitives/Panel'
 import { SegmentedControl, type Segment } from '../primitives/SegmentedControl'
+import { LiveRunButton, LiveRunFacts, LiveRunStatus } from './LiveRun'
 import { MACHINE_NAME } from './machines'
 import { ActionButton, ClassicalRunFacts, QuantumRunFacts, type PanelBaseProps } from './shared'
 import './panels.css'
@@ -31,27 +33,42 @@ const PICTURE_SIDE = 128
 /** Most recent bits written out as digits. */
 const RECENT_BITS = 16
 
-/** Both streams play in step, so the shorter pool sets the end. */
-const LENGTH = Math.min(pools.classical.length, pools.quantum.length)
-
 /**
  * Classical and quantum side by side. "Generate bits" streams held-out bits from each
  * pool; the pictures fill in and the counts update as bits arrive. It stops for good at
  * the end of the recorded bits, and a slide shown again carries on where it stopped.
+ *
+ * Served by an armed live server (SPEC.md, Section 6.4), it also offers one small live
+ * run. Its fresh bits then play on the quantum machine, from the start and in step with
+ * the classical machine, until they run out.
  */
-export function MachinesPanel({ placement = 'inline', className,
-  hideHeader, delay }: PanelBaseProps) {
-  const [position, setPosition] = useSessionNumber('machines:position', () => 0)
+export function MachinesPanel({ placement = 'inline', className, hideHeader, delay }: PanelBaseProps) {
+  const live = useLiveRun()
+  const fresh = __QRNG_LIVE__ ? live.result : null
+  const quantumBits = fresh !== null ? fresh.bits : pools.quantum.bits
+  // Both streams play in step, so the shorter one sets the end.
+  const length = Math.min(pools.classical.length, quantumBits.length)
+
+  const [position, setPosition] = useSessionNumber(
+    fresh !== null ? `machines:live:${fresh.runId}` : 'machines:position',
+    () => 0,
+  )
   const [wantsToPlay, setPlaying] = useState(false)
   const [speed, setSpeed] = useState<Speed>('medium')
-  const ended = position >= LENGTH
+  // Fresh bits start playing as soon as they arrive.
+  const [shownRun, setShownRun] = useState<string | null>(null)
+  if (fresh !== null && fresh.runId !== shownRun) {
+    setShownRun(fresh.runId)
+    setPlaying(true)
+  }
+  const ended = position >= length
   const playing = wantsToPlay && !ended
 
   // Advance on animation frames while playing, never past the end of the pools.
   const carry = useRef(0)
-  const latest = useRef({ position, speed })
+  const latest = useRef({ position, speed, length })
   useEffect(() => {
-    latest.current = { position, speed }
+    latest.current = { position, speed, length }
   })
   useEffect(() => {
     if (!playing) {
@@ -65,7 +82,7 @@ export function MachinesPanel({ placement = 'inline', className,
       const wanted = Math.floor(carry.current)
       if (wanted > 0) {
         carry.current -= wanted
-        const step = advanceBy(latest.current.position, wanted, LENGTH)
+        const step = advanceBy(latest.current.position, wanted, latest.current.length)
         if (step === 0) {
           return
         }
@@ -83,6 +100,7 @@ export function MachinesPanel({ placement = 'inline', className,
         {playing ? 'Pause' : position === 0 ? 'Generate bits' : 'Keep generating'}
       </ActionButton>
       <SegmentedControl label="Speed" segments={SPEEDS} value={speed} onChange={setSpeed} />
+      {__QRNG_LIVE__ && <LiveRunButton live={live} />}
     </div>
   )
 
@@ -98,25 +116,52 @@ export function MachinesPanel({ placement = 'inline', className,
     >
       <div className="machines">
         {SOURCES.map((source) => (
-          <Machine key={source} source={source} position={position} />
+          <Machine
+            key={source}
+            source={source}
+            bits={source === 'quantum' ? quantumBits : pools.classical.bits}
+            position={position}
+            facts={
+              source === 'classical' ? (
+                <ClassicalRunFacts />
+              ) : __QRNG_LIVE__ && fresh !== null ? (
+                <LiveRunFacts result={fresh} />
+              ) : (
+                <QuantumRunFacts />
+              )
+            }
+          />
         ))}
       </div>
       <p className="machines__status" aria-live="polite">
         {ended ? (
-          <>End of the recorded bits.</>
+          <>{fresh !== null ? 'End of the fresh bits.' : 'End of the recorded bits.'}</>
         ) : (
           <>
-            <Num>{count(position)}</Num> of <Num>{count(LENGTH)}</Num> recorded bits from each machine
+            <Num>{count(position)}</Num> of <Num>{count(length)}</Num>{' '}
+            {fresh !== null ? 'bits from each machine (fresh quantum bits)' : 'recorded bits from each machine'}
           </>
         )}
       </p>
+      {__QRNG_LIVE__ && <LiveRunStatus live={live} />}
     </Panel>
   )
 }
 
-function Machine({ source, position }: { source: Source; position: number }) {
-  const pool = pools[source]
-  const { bits } = readPool(pool, 0, position)
+interface MachineProps {
+  source: Source
+  /** The stream being played: a pool, or a live run's fresh bits. */
+  bits: Uint8Array
+  position: number
+  facts: ReactNode
+}
+
+function Machine({ source, bits: stream, position, facts }: MachineProps) {
+  // Bounded like readPool: bits are never repeated or wrapped (SPEC.md, Section 9.5).
+  if (!Number.isInteger(position) || position < 0 || position > stream.length) {
+    throw new RangeError(`read of ${position} bits from a stream of ${stream.length}`)
+  }
+  const bits = stream.subarray(0, position)
   const ones = countOnes(bits)
   const { fractionOnes, entropy } = bitStats(ones, position)
   const recent = Array.from(bits.subarray(Math.max(0, position - RECENT_BITS)))
@@ -127,7 +172,7 @@ function Machine({ source, position }: { source: Source; position: number }) {
         <div className="machine__picture">
           <Bitmap
             source={source}
-            bitmap={{ size: PICTURE_SIDE, bits: pool.bits, filled: position }}
+            bitmap={{ size: PICTURE_SIDE, bits: stream, filled: position }}
             label={`${MACHINE_NAME[source]}: the ${count(Math.min(position, PICTURE_SIDE ** 2))} bits generated so far as a picture`}
           />
         </div>
@@ -160,7 +205,7 @@ function Machine({ source, position }: { source: Source; position: number }) {
           </div>
         </dl>
       </div>
-      {source === 'quantum' ? <QuantumRunFacts /> : <ClassicalRunFacts />}
+      {facts}
     </section>
   )
 }

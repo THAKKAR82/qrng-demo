@@ -36,7 +36,7 @@ from pipeline.attacker import (
     cross_checks,
 )
 from pipeline.classical import words_to_bits
-from pipeline.paths import REPO_ROOT, RUNS_DIR, SAMPLE_DIR, UI_DATA_DIR
+from pipeline.paths import LIVE_DIR, REPO_ROOT, RUNS_DIR, SAMPLE_DIR, UI_DATA_DIR
 from pipeline.sample import SAMPLE_NAME
 
 DEMO_JSON = UI_DATA_DIR / "demo.json"
@@ -271,7 +271,22 @@ def _summary(result: AttackResult) -> wording.AttackSummary:
     )
 
 
+def is_live_run(folder: Path) -> bool:
+    """True if ``folder`` holds a live run from ``live-server`` (SPEC.md, Section 6.4).
+
+    Fails safe: any ``live`` value other than a missing key or ``false`` counts as live.
+    """
+    meta_path = folder / runs.QUANTUM_JSON
+    if not meta_path.is_file():
+        return False
+    return runs.read_json(meta_path).get("live", False) is not False
+
+
 def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
+    if is_live_run(folder) or folder.resolve().is_relative_to(LIVE_DIR.resolve()):
+        raise ValueError(
+            f"refusing to export {folder.name}: live runs are never exported (SPEC.md, 6.4)"
+        )
     run = runs.load_run(folder)
     q_meta, c_meta = run.quantum_meta, run.classical_meta
     q_bits, words = run.bits, run.words
