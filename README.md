@@ -238,6 +238,8 @@ chflags nohidden .venv/lib/python3.13/site-packages/*.pth
 
 **Files changing on their own, or `node_modules` errors after a sync.** The clone is inside iCloud Drive or OneDrive. Move it to a folder that isn't synced (such as `~/code/`), then delete and recreate `.venv` and `ui/node_modules`.
 
+**`npm ci` prints `allow-scripts` warnings about `fsevents`.** Expected: npm doesn't run that optional package's install script unless approved, and nothing here needs it (it only speeds up file watching for `npm run dev`). Leave it unapproved.
+
 **`npm audit` warnings.** The known warnings are in `vite-plugin-singlefile`'s build-time dependencies (`micromatch`, `braces`). They run only when building `demo/index.html` and are not part of any bundle a browser loads. Don't run `npm audit fix --force`: it downgrades `vite-plugin-singlefile`.
 
 ## Working with Claude Code
