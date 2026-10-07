@@ -11,18 +11,20 @@ const { metadata: meta, cross_checks: checks } = demo
 const url = audienceUrl()
 
 /** The phone invitation: QR code and short address, or nothing when no URL is set. */
-export function PhoneInvite({ heading }: { heading: string }) {
+export function PhoneInvite({ heading, large = false }: { heading: string; large?: boolean }) {
   if (url === null) {
     return null
   }
   return (
-    <aside className="invite reveal" style={revealDelay(200)}>
+    <aside className={`invite${large ? ' invite--large' : ''} reveal`} style={revealDelay(200)}>
       <div className="invite__code">
         <QrCode value={url.href} label={`QR code for ${url.short}`} />
       </div>
-      <p className="invite__heading">{heading}</p>
-      <p className="invite__url num">{url.short}</p>
-      <p className="term">Your phone gets its own copy of the app. It isn't connected to this screen.</p>
+      <div className="invite__text">
+        <p className="invite__heading">{heading}</p>
+        <p className="invite__url num">{url.short}</p>
+        <p className="term">Your phone gets its own copy of the app. It isn't connected to this screen.</p>
+      </div>
     </aside>
   )
 }

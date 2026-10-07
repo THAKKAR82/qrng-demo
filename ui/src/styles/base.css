@@ -6,10 +6,17 @@
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
+/* The presenter's stage fills the window; the phone version is an ordinary page that grows
+   with its content and scrolls (SPEC.md, Section 9.3). */
+:root[data-view='presenter'],
+:root[data-view='presenter'] body,
+:root[data-view='presenter'] #root {
   height: 100%;
+}
+
+:root[data-view='audience'] body,
+:root[data-view='audience'] #root {
+  min-height: 100%;
 }
 
 html {
@@ -31,11 +38,6 @@ body {
   font-variant-numeric: lining-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* The presenter's stage never scrolls; the audience page scrolls like any page. */
-:root[data-view='presenter'] body {
-  overflow: hidden;
 }
 
 h1,
@@ -94,25 +96,6 @@ button {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-/*
- * The stage: a fixed 16:9 frame, centred in the window, inside which every scene
- * is laid out on the 12-column grid.
- */
-.stage {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: var(--color-surface);
-}
-
-.stage__frame {
-  position: relative;
-  width: var(--stage-width);
-  height: var(--stage-height);
-  overflow: hidden;
 }
 
 .grid {

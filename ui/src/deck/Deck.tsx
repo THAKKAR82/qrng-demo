@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { isSynthetic } from '../data/demo'
 import { NotesOverlay } from './NotesOverlay'
+import { QrOverlay } from './QrOverlay'
 import { Progress } from './Progress'
 import { SyntheticLabel } from './SyntheticLabel'
 import { stepCount, type SceneDef } from './types'
@@ -39,11 +40,12 @@ function toggleFullscreen(): void {
 
 /**
  * Full-screen scenes on a fixed 16:9 stage, with keyboard and clicker navigation,
- * a progress indicator, presenter notes (N), fullscreen (F), and the synthetic-data
- * label whenever the data is synthetic.
+ * a progress indicator, presenter notes (N), fullscreen (F), a QR code overlay for phones
+ * (Q), and the synthetic-data label whenever the data is synthetic.
  */
 export function Deck({ scenes, index, step, onNavigate, onTogglePrimitives }: DeckProps) {
   const [notesOpen, setNotesOpen] = useState(false)
+  const [qrOpen, setQrOpen] = useState(false)
   const last = scenes.length - 1
   const current = Math.min(Math.max(index, 0), last)
   const scene = scenes[current]
@@ -79,7 +81,11 @@ export function Deck({ scenes, index, step, onNavigate, onTogglePrimitives }: De
     toggleNotes: () => setNotesOpen((open) => !open),
     toggleFullscreen,
     togglePrimitives: () => onTogglePrimitives?.(),
-    closeOverlays: () => setNotesOpen(false),
+    toggleQr: () => setQrOpen((open) => !open),
+    closeOverlays: () => {
+      setNotesOpen(false)
+      setQrOpen(false)
+    },
   })
 
   useEffect(() => {
@@ -101,6 +107,7 @@ export function Deck({ scenes, index, step, onNavigate, onTogglePrimitives }: De
         {notesOpen && (
           <NotesOverlay scene={scene} step={currentStep} steps={steps} next={scenes[current + 1]} />
         )}
+        {qrOpen && <QrOverlay />}
         {isSynthetic && <SyntheticLabel />}
       </main>
     </div>

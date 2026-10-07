@@ -146,8 +146,7 @@ export function AttackerPanel({
   }
   usePanelKeys(
     {
-      c: () => choose(() => setMachine('classical')),
-      q: () => choose(() => setMachine('quantum')),
+      m: () => choose(() => setMachine(machine === 'classical' ? 'quantum' : 'classical')),
     },
     keyboard,
   )

@@ -14,9 +14,10 @@ const KEYS = [
   ['N', 'notes'],
   ['F', 'fullscreen'],
   ['P', 'primitives'],
+  ['Q', 'QR code for phones'],
   ['0 1', 'guess (guess game)'],
   ['R', 'reveal (tell them apart)'],
-  ['C Q', 'machine (guess game, attacker)'],
+  ['M', 'switch machine (guess game, attacker)'],
 ] as const
 
 /** Presenter notes for the current scene, toggled with N and hidden by default. */

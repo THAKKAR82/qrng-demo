@@ -1,3 +1,5 @@
+import './SyntheticLabel.css'
+
 /**
  * SPEC.md, Sections 4.1 and 9: shown on every screen of both views when the data is
  * synthetic. There is no way to close it. On the presenter's stage it sits at the top

@@ -1,0 +1,199 @@
+/*
+ * The phone version (SPEC.md, Section 9.6). Ordinary page flow: nothing here fixes a
+ * height or blocks touch scrolling, so any screen taller than the phone scrolls like a
+ * normal web page. Tokens come from the audience block in tokens.css.
+ */
+
+.phone {
+  width: 100%;
+  max-width: calc(var(--content-max) + 2 * var(--margin-x));
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 0 var(--margin-x) calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
+}
+
+.phone-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
+}
+
+.phone-screen__title {
+  font-size: var(--text-h2);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-display);
+  text-wrap: balance;
+}
+
+.phone-lead {
+  font-size: var(--text-lead);
+  line-height: var(--leading-body);
+  text-wrap: pretty;
+}
+
+.phone-small {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+
+.phone-step {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.phone-score {
+  font-size: var(--text-h3);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-heading);
+}
+
+.phone-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.phone-actions--games {
+  margin-top: var(--space-4);
+}
+
+/* ---- Buttons ------------------------------------------------------------- */
+
+.phone-button {
+  --phone-fill: var(--color-ink);
+
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  padding: var(--space-1) var(--space-3);
+  border: var(--line-hair) solid var(--phone-fill);
+  background: var(--color-surface);
+  color: var(--phone-fill);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.phone-button--classical {
+  --phone-fill: var(--color-classical-text);
+}
+
+.phone-button--quantum {
+  --phone-fill: var(--color-quantum-text);
+}
+
+.phone-button--primary {
+  background: var(--phone-fill);
+  color: var(--color-surface);
+}
+
+.phone-button--big {
+  min-height: calc(var(--touch-min) * 1.5);
+  font-size: var(--text-lead);
+  font-weight: var(--weight-semibold);
+}
+
+.phone-button:active:not(:disabled) {
+  opacity: 0.8;
+}
+
+.phone-button:disabled {
+  border-color: var(--color-rule);
+  color: var(--color-muted);
+  cursor: default;
+}
+
+/* ---- Spot the quantum machine ------------------------------------------ */
+
+.spot-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.spot-pair__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.spot-pair__choice {
+  display: block;
+  width: 100%;
+  min-height: var(--touch-min);
+  padding: var(--space-1);
+  border: var(--line-hair) solid var(--color-rule);
+  background: var(--color-surface);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.spot-pair__choice.is-picked {
+  border-color: var(--color-ink);
+  outline: var(--line-hair) solid var(--color-ink);
+}
+
+.spot-pair__choice:disabled {
+  cursor: default;
+}
+
+.spot-pair__caption {
+  font-weight: var(--weight-medium);
+}
+
+.phone-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ---- Beat the attacker -------------------------------------------------- */
+
+.beat-keys {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.beat-keys .phone-button {
+  min-height: calc(var(--touch-min) * 2);
+  font-family: var(--font-mono);
+  font-size: var(--text-h1);
+  text-align: center;
+}
+
+.beat-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: calc(var(--text-body) * 7);
+}
+
+.beat-feedback__bit {
+  font-size: var(--text-lead);
+}
+
+.beat-scores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.beat-score {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-h3);
+  line-height: 1.1;
+}
+
+.beat-score__who {
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+}

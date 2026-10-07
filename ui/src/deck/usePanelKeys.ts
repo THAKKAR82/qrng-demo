@@ -5,7 +5,7 @@ import { isInteractiveTarget } from './useDeckKeys'
  * Keys a panel on the current slide answers itself, such as 0 and 1 for a guess or R for a
  * reveal (SPEC.md, Section 9.3). Like the deck's own keys, they are ignored when aimed at
  * an interactive element, with a modifier held, or auto-repeated. Use only keys the deck
- * does not: never arrows, Page keys, Space, Home, End, Escape, N, F, or P.
+ * does not: never arrows, Page keys, Space, Home, End, Escape, N, F, P, or Q.
  *
  * `bindings` maps `KeyboardEvent.key` (lower case for letters) to an action.
  */

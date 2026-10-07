@@ -151,7 +151,7 @@ export const talkScenes: readonly SceneDef[] = [
     notes: (
       <>
         <p>
-          Let the room call out 0 or 1; press 0 or 1 for the majority. C and Q switch machines. Expect the room to hover
+          Let the room call out 0 or 1; press 0 or 1 for the majority. M switches machines. Expect the room to hover
           around half right on both: people can't predict either one.
         </p>
         <p>Each machine starts at a random point in bits the attacker never saw, and never repeats a bit.</p>
@@ -173,7 +173,7 @@ export const talkScenes: readonly SceneDef[] = [
     notes: (
       <>
         <p>
-          Step 1: play a few rounds with the attacker row on, on both machines (C and Q), and compare its score with the
+          Step 1: play a few rounds with the attacker row on, on both machines (M switches), and compare its score with the
           room's. Over all the unseen bits: {copy.classical_attack} {copy.quantum_attack}
         </p>
         <p>
@@ -232,51 +232,32 @@ export const talkScenes: readonly SceneDef[] = [
     ),
   },
   {
-    id: 'explore',
-    title: 'Your turn: explore',
-    steps: 2,
+    id: 'play',
+    title: 'Your turn: play on your phone',
     notes: (
       <>
         <p>
-          Phones: everything from the talk is there, plus the chip itself. Press → to show the chip map; click a qubit to
-          see its numbers.
+          Give people a couple of minutes. The phone version has two games: Spot the quantum machine (five pairs of
+          pictures) and Beat the attacker (twenty guesses against an attacker on either machine).
         </p>
-        <p>
-          {copy.bias_note} Flagged qubits: <Num>{count(quantum.bias_tests.flagged_columns.length)}</Num>, all kept in the
-          data.
-        </p>
+        {url === null ? (
+          <p>No audience URL was set at build time (VITE_AUDIENCE_URL), so there is no QR code on this slide.</p>
+        ) : (
+          <p>
+            The QR code opens <Num>{url.short}</Num>. Phones get a separate copy of the app; nothing is connected. Press Q at
+            any point in the talk to show the code again.
+          </p>
+        )}
       </>
     ),
-    render: (step) =>
-      step === 0 ? (
-        <Scene title="Your turn: explore" lede="Everything from this talk is in the phone version, at your own pace.">
-          <ul className="explore">
-            {[
-              'Generate bits from both machines',
-              'Play the guessing game',
-              'Launch the attacker yourself',
-              'Tap the qubits on the real chip',
-            ].map((text, i) => (
-              <li key={text} className="explore__item reveal" style={revealDelay(150 + 100 * i)}>
-                {text}
-              </li>
-            ))}
-          </ul>
-          <PhoneInvite heading="Open it on your phone" />
-        </Scene>
-      ) : (
-        <Scene
-          title="The chip behind the bits"
-          lede={
-            <>
-              The <Num>{count(quantum.qubits.length)}</Num> qubits used are coloured: deeper means further from reading 0 and
-              1 equally often. Ringed qubits were flagged.
-            </>
-          }
-        >
-          <HardwarePanel className="talk__wide" hideHeader />
-        </Scene>
-      ),
+    render: () => (
+      <Scene
+        title="Your turn: play on your phone"
+        lede="Two quick games: spot the quantum machine, then try to beat the attacker."
+      >
+        <PhoneInvite heading="Scan to play" large />
+      </Scene>
+    ),
   },
   {
     id: 'takeaway',
@@ -321,6 +302,36 @@ export const talkScenes: readonly SceneDef[] = [
             </p>
           </li>
         </ol>
+      </Scene>
+    ),
+  },
+  {
+    id: 'inside',
+    title: 'Inside the quantum computer',
+    notes: (
+      <>
+        <p>
+          Appendix, for questions. The map shows the chip's qubits; the coloured ones were used in this run. Click a qubit
+          to show how often it read 1, how often it misreads, and how far it sits from half.
+        </p>
+        <p>
+          {copy.bias_note} Flagged qubits: <Num>{count(quantum.bias_tests.flagged_columns.length)}</Num> (their share of 1s
+          sits more than <Num>{fixed(quantum.bias_tests.z_threshold, 0)}</Num> standard errors from half). They were kept,
+          not removed: every bit they produced is in the data and in every result, and no bias correction was applied.
+        </p>
+      </>
+    ),
+    render: () => (
+      <Scene
+        title="Inside the quantum computer"
+        lede={
+          <>
+            The <Num>{count(quantum.qubits.length)}</Num> qubits used are coloured: deeper means further from reading 0 and
+            1 equally often. Ringed qubits were flagged, and kept.
+          </>
+        }
+      >
+        <HardwarePanel className="talk__wide" hideHeader />
       </Scene>
     ),
   },

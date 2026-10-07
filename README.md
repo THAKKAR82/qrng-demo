@@ -53,39 +53,54 @@ More tasks (`analyze`, `build-demo`, `collect-quantum`, ...) are listed in SPEC.
 
 ## The web app
 
-The app in `ui/` has two views (SPEC.md, Section 9): the **presenter view**, a slide deck for the projector (the default), and the **audience view** (`?view=audience`), a phone page for exploring the same data. Use the Node version in `.nvmrc` (`nvm use`).
+The app in `ui/` has two parts (SPEC.md, Section 9): the **presenter view**, a slide deck for the projector, and the **phone version**, two short games for the audience. Use the Node version in `.nvmrc` (`nvm use`).
 
 | Command | Use it for |
 |---|---|
 | `cd ui && npm run dev` | Working on the UI. Same as `python -m pipeline.tasks ui-dev`. |
 | `cd ui && npm run preview` | **Presenting.** Builds into `ui/dist/` and serves it at the URL it prints. |
 | `cd ui && npm run build:demo` | The fallback: one self-contained `demo/index.html` that opens by double-click, offline. Same as `python -m pipeline.tasks ui-build`. |
+| `cd ui && npm run build:web` | **The phone site.** Only the phone version, in `ui/dist-web/`, with `index.html` at the root. Upload that folder to any static host. `npm run preview:web` serves it locally. |
 
-The presenter view opens on slide 1 of the nine-slide talk (SPEC.md, Section 9.4). Some slides have steps: "next" first reveals the next part of the slide. Every slide has presenter notes.
+The presenter view opens on slide 1 of the ten-slide talk (SPEC.md, Section 9.4; slide 10 is an appendix for questions). Some slides have steps: "next" first reveals the next part of the slide. Every slide has presenter notes.
 
-Keys in the presenter view: → / ↓ / PageDown / Space next, ← / ↑ / PageUp back, Home and End, N presenter notes, F fullscreen, P the primitives page. Clickers that send PageUp and PageDown work as-is. On the interactive slides: 0 and 1 enter the room's guess, R reveals the pictures, and C and Q switch between the classical and quantum machines. Add `#primitives` (or `?primitives`) to the URL to open the primitives page directly; it works under `file://` too.
+Keys in the presenter view: → / ↓ / PageDown / Space next, ← / ↑ / PageUp back, Home and End, N presenter notes, F fullscreen, P the primitives page, Q a large QR code for phones (Q again or Escape closes it). Clickers that send PageUp and PageDown work as-is. On the interactive slides: 0 and 1 enter the room's guess, R reveals the pictures, and M switches between the classical and quantum machines. Add `#primitives` (or `?primitives`) to the URL to open the primitives page directly; it works under `file://` too.
 
-For phones, put either build (`ui/dist/` or `demo/index.html`) on any static host and set the address phones should open when you build, so the opening slide shows it as a QR code (generated in the app, no online service):
+### Phones and the QR code
+
+The phone version has an intro, two games (Spot the quantum machine; Beat the attacker), and a closing screen. It has no slides, notes, or presenter keys, and it is not connected to the presenter's laptop. In the presenter builds the same screens open with `?view=audience`.
+
+The QR code (on slide 1, slide 8, and the Q overlay) shows `VITE_AUDIENCE_URL`, which is read **when you build**. It is drawn in the app; no online service is involved. With no setting, those places show no code.
+
+**For a rehearsal on the local network**, point phones at the laptop. Find the laptop's address (`ipconfig getifaddr en0` on macOS, or the "Network" line that `npm run preview -- --host` prints), then build and serve with it, and connect the phones to the same Wi-Fi:
 
 ```sh
 cd ui
-VITE_AUDIENCE_URL='https://example.org/qrng/?view=audience' npm run build:demo
+VITE_AUDIENCE_URL='http://192.168.1.20:4173/?view=audience' npm run preview -- --host
 ```
 
-With no `VITE_AUDIENCE_URL`, the opening slide shows the title only. The phone view (`?view=audience`) has a guided tour through the panels in the order of the talk, plus an "Explore all" page. It is not connected to the presenter's laptop.
+**For the real talk**, host the phone site and build the deck with its address:
 
-Both builds use whatever `ui/src/data/demo.json` holds; `python -m pipeline.tasks export` refreshes it. If the data is synthetic, a label saying so stays on every screen.
+```sh
+cd ui
+npm run build:web                                   # upload ui/dist-web/ to your static host
+VITE_AUDIENCE_URL='https://example.org/qrng/' npm run preview      # or npm run build:demo
+```
 
-To check the UI visually (development only; downloads a browser once with `npx playwright install chromium`):
+Every build uses whatever `ui/src/data/demo.json` holds; `python -m pipeline.tasks export` refreshes it. If the data is synthetic, a label saying so stays on every screen, phone screens included.
+
+To check the UI visually (development only; downloads browsers once with `npx playwright install chromium`):
 
 ```sh
 cd ui
 npm run preview                                    # in one terminal
 node scripts/verify.mjs --url http://localhost:4173/ --synthetic no
 npm run build:demo && node scripts/verify.mjs --file ../demo/index.html --synthetic no
+npm run preview:web -- --port 4174                 # in another terminal
+node scripts/verify.mjs --web http://localhost:4174/ --synthetic no
 ```
 
-The verifier walks every slide and step and every primitive at 1920×1080 and 1280×720, drives each panel (generate, reveal, guess, launch, tapping a qubit), and walks the phone tour at 390×844. Add `--qr yes` when the build has a `VITE_AUDIENCE_URL`, or `--qr no` when it doesn't. Screenshots land in `data/scratch/ui-verify/`.
+The verifier walks every slide and step and every primitive at 1920×1080 and 1280×720, drives each panel, checks slide 8 and the Q overlay, and plays both phone games at 390×844 with touch, including real touch scrolling. With `--web` it checks only the phone site, and also that its bundle holds no presenter content. Add `--qr yes` when the build has a `VITE_AUDIENCE_URL`, or `--qr no` when it doesn't. Screenshots land in `data/scratch/ui-verify/`.
 
 ### Fonts
 

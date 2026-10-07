@@ -76,8 +76,7 @@ export function GuessGamePanel({
     {
       '0': () => guess(0),
       '1': () => guess(1),
-      c: () => setMachine('classical'),
-      q: () => setMachine('quantum'),
+      m: () => setMachine(machine === 'classical' ? 'quantum' : 'classical'),
     },
     keyboard,
   )

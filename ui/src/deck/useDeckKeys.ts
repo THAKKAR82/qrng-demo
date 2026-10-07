@@ -9,6 +9,8 @@ export interface DeckKeyActions {
   toggleFullscreen: () => void
   /** Switch between the presentation and the primitives page. */
   togglePrimitives: () => void
+  /** Show or hide the large QR code for phones. */
+  toggleQr: () => void
   closeOverlays: () => void
 }
 
@@ -82,6 +84,7 @@ export function useDeckKeys(actions: DeckKeyActions): void {
         n: a.toggleNotes,
         f: a.toggleFullscreen,
         p: a.togglePrimitives,
+        q: a.toggleQr,
       }
       const handler =
         handlers[event.key] ?? (event.repeat ? undefined : byLetter[event.key.toLowerCase()])

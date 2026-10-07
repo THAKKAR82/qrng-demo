@@ -53,6 +53,12 @@
   width: calc(360 * var(--px));
 }
 
+.invite__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .invite__heading {
   margin-top: var(--space-2);
   font-size: var(--text-lead);
@@ -94,24 +100,31 @@
   color: var(--color-muted);
 }
 
-/* ---- 8. Explore ------------------------------------------------------------ */
-
-.explore {
-  grid-column: 1 / span 7;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.explore__item {
-  padding-top: var(--space-2);
-  border-top: var(--line-hair) solid var(--color-rule);
-  font-size: var(--text-h3);
-  line-height: var(--leading-heading);
-}
+/* ---- 8. Play on your phone: the code, large ------------------------------ */
 
 .scene__body > .invite {
   grid-column: 9 / span 4;
+}
+
+.scene__body > .invite--large {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.invite--large .invite__code {
+  flex: none;
+  width: calc(560 * var(--px));
+}
+
+.invite--large .invite__heading {
+  margin-top: 0;
+  font-size: var(--text-h2);
+}
+
+.invite--large .invite__url {
+  font-size: var(--text-h3);
 }
 
 /* ---- 9. Takeaway ---------------------------------------------------------- */
