@@ -10,7 +10,7 @@ python -m pipeline.tasks export --sample <name> # a folder under data/sample/
 
 The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Schema 2020-12). `export` validates against it before writing, and the tests validate it again. Every object is closed (`additionalProperties: false`), so a new field needs a schema change first. See SPEC.md, Section 7.1.
 
-**Guarantees:** under 1 MB; no credentials, CRNs, account or instance names, or local file paths. Do not hand-edit the file. Every on-screen number must come from it (SPEC.md, Section 4).
+**Guarantees:** under 1 MB (so it loads quickly on a phone); no credentials, CRNs, account or instance names, or local file paths. Do not hand-edit the file. Every on-screen number must come from it (SPEC.md, Section 4).
 
 ## Conventions
 
@@ -25,12 +25,14 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema_version` | `1` | Bumped on breaking changes. |
+| `schema_version` | `2` | Bumped on breaking changes. Version 2 replaced `next_bits` with `pool` and added `layout` and `copy`. |
 | `generated_utc` | time | When `export` ran. |
 | `metadata` | object | Where the data came from (below). |
 | `quantum` | object | Quantum stream results (below). |
 | `classical` | object | Classical (MT19937) stream results (below). |
 | `cross_checks` | object | Each attacker run against the other stream (below). |
+| `layout` | object \| null | The backend's qubit layout from Qiskit's bundled device description (below), or `null`. |
+| `copy` | object | Comparative phrases chosen by rule from the data (below). The UI uses them verbatim. |
 
 ## `metadata`
 
@@ -67,7 +69,7 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `bias_tests` | object | See below. |
 | `qubits` | array | One entry per column, **every qubit included** (see below). |
 | `bitmap` | bitmap | First 16,384 bits of the stream. |
-| `next_bits` | next bits | First 200 held-out bits. |
+| `pool` | pool | 20,000 held-out bits, right after the training half, with the attacker's predictions. |
 | `attacker` | attacker | The per-qubit bias attacker. |
 
 ### `quantum.bias_tests`
@@ -101,7 +103,7 @@ The machine-readable schema is [`demo.schema.json`](demo.schema.json) (JSON Sche
 | `fraction_ones` | probability | Fraction of ones. |
 | `shannon_entropy.pooled` | bits | h(p̂). |
 | `bitmap` | bitmap | First 16,384 bits of the stream. |
-| `next_bits` | next bits | First 200 held-out bits (right after the 624 observed words). |
+| `pool` | pool | 20,000 held-out bits, right after the 624 observed words, with the attacker's predictions. |
 | `attacker` | attacker | The Mersenne Twister state-recovery attacker. |
 
 ## `cross_checks`
@@ -113,13 +115,22 @@ Fairness checks (SPEC.md, Section 3.1). Both should score about 0.5, showing nei
 | `mt_on_quantum` | The MT state-recovery attacker on the quantum bits, packed into 32-bit words most significant bit first, in shot-major order. |
 | `bias_on_classical` | The bias attacker on the classical bits, reshaped to the quantum `(shots, qubits)` shape and split in half by shots. |
 
-Each has `name`, `accuracy`, `ci_low`, `ci_high` (95% Wilson), `n_predicted`, `min_entropy`, and `consistent_with_half` (`true` if 0.5 lies inside the interval). With a 95% interval, a fair attacker misses 0.5 about one time in twenty, so a `false` here is not on its own evidence of a problem.
+Each has `name`, `accuracy`, `ci_low`, `ci_high` (95% Wilson), `n_predicted`, `n_training_bits`, `min_entropy`, `consistent_with_half` (`true` if 0.5 lies inside the interval), and `running` in the same form as an attacker's. With a 95% interval, a fair attacker misses 0.5 about one time in twenty, so a `false` here is not on its own evidence of a problem.
 
 ## Shared shapes
 
-**bitmap:** `size` (always 128) and `rows`, 128 strings of 128 characters each, `"0"` or `"1"`. Row `r`, character `c` is bit `128·r + c` of the stream. Draw 1 as white and 0 as black.
+**bitmap:** `size` (always 128), `rows`, 128 strings of 128 characters each, `"0"` or `"1"`, and `within_training` (`true` if all 16,384 bits lie inside the attacker's training data, so the UI may show the bitmap as "what the attacker saw"). Row `r`, character `c` is bit `128·r + c` of the stream. Draw 1 in the stream's colour and 0 blank (the background), as the UI and the notebook (`bitmap_cmap` in `pipeline/plotstyle.py`) both do.
 
-**next bits:** `start_bit` (index into the flattened stream of the first bit), `bits` (200 values, 0 or 1), and `attacker_predictions` (the attacker's guess for each of those 200 bits). These bits come right after the attacker's training data, so the attacker never saw them.
+**pool:** held-out bits for the live displays and the guessing game.
+
+| Field | Meaning |
+|---|---|
+| `start_bit` | Index into the flattened stream of the first pool bit. Always at or after the end of the attacker's training data. |
+| `n_bits` | Bits in the pool: 20,000, or fewer if the held-out part is shorter. |
+| `bits` | The pool bits, packed 8 per byte, most significant bit first (NumPy `packbits`), then base64. The last byte is padded with 0 bits, which are not part of the pool. |
+| `predictions` | The attacker's guess for each pool bit, packed the same way. |
+
+The UI reads each pool bit at most once per pass and never repeats or wraps the pool.
 
 **attacker:**
 
@@ -132,4 +143,30 @@ Each has `name`, `accuracy`, `ci_low`, `ci_high` (95% Wilson), `n_predicted`, `m
 | `n_training_bits` | Bits the attacker saw first. |
 | `min_entropy` | H∞ = −log2(max(a, 1 − a)) for accuracy a. A reliably wrong attacker is as good as a reliably right one (flip every guess), so accuracy 0 and 1 both give 0 bits and 0.5 gives 1 bit. |
 | `min_entropy_conservative` | H∞ at whichever of `ci_low` and `ci_high` gives the larger max(a, 1 − a), i.e. the lower H∞. |
+| `min_entropy_high` | The highest H∞ for any accuracy in the interval: 1 if the interval contains 0.5, otherwise H∞ at the bound nearer 0.5. With `min_entropy_conservative` it gives H∞'s range. |
 | `running.n_bits`, `running.accuracy` | Accuracy over the first `n_bits[i]` predictions, for a convergence chart. At most 500 points, including the first and last prediction. |
+| `running.ci_low`, `running.ci_high` | 95% Wilson interval at each running point. |
+
+## `layout`
+
+`null` unless Qiskit ships an offline description of the run's backend. Built from `qiskit_ibm_runtime.fake_provider` (for `ibm_fez`, `FakeFez`), which reads files bundled with the package: no account and no network. It describes the device as Qiskit recorded it, not live calibration, and the UI labels it that way.
+
+| Field | Meaning |
+|---|---|
+| `description` | `"Qiskit's bundled device description"`. |
+| `device` | The fake backend's class name, for example `FakeFez`. |
+| `qiskit_ibm_runtime_version` | Version of the package the description came from. |
+| `num_qubits` | Qubits on the device. |
+| `edges` | Undirected couplings `[a, b]` with `a < b`, sorted. |
+| `coordinates` | `[x, y]` for each qubit, in grid units (x across, y down). Derived offline from `edges` by `pipeline/layout.py`: the device's long rows of qubits each go on an even y, and each bridging qubit sits on the odd y between the two rows it joins, under its neighbours. |
+
+## `copy`
+
+Comparative phrases, chosen by the rules in `pipeline/wording.py` from the values in this file. The UI shows them verbatim and never picks comparative words itself (SPEC.md, Section 4.3).
+
+| Field | Rule |
+|---|---|
+| `shannon_comparison` | With classical pooled and quantum per-qubit-mean Shannon entropy: "equally random" only if both are at least 0.99; "close to random" if both are at least 0.9; otherwise names the lower one as "less random". |
+| `classical_attack`, `quantum_attack` | From the attacker's hits and interval: every bit correct → "every … bit correctly"; accuracy at least 0.99 → "almost every"; interval contains 0.5 → "no better than a coin flip"; interval entirely between 0.5 and 0.55 → "only slightly better than a coin flip"; interval above 0.5 otherwise → "better than a coin flip, but not perfectly"; interval below 0.5 → "wrong more often than right". |
+| `unpredictability_comparison` | With each stream's H∞ range (`min_entropy_conservative` to `min_entropy_high`): quantum's lower end at least 0.5 above classical's upper end → "far more"; quantum's range entirely above classical's → "more"; the reverse → classical "more"; overlapping → "about the same, within the uncertainty". |
+| `bias_note` | From a sign test on how many qubits read 1 less than half the time (`analysis.bias_direction`) and the mean \|P(1) − 0.5\|: leaning toward 0, toward 1, or mixed; "slightly" when the mean \|P(1) − 0.5\| is under 0.05. |

@@ -176,6 +176,8 @@ The Sampler runs locally on Qiskit Aer (a dev dependency). With a fake backend a
 
 `analyze --run <run_id>` (or `--sample <name>`) reads a run folder and writes `results.json`. The notebook and the UI both use the functions in `pipeline/` for this; no analysis logic is duplicated in the notebook or in TypeScript.
 
+**One exception: display-only counting in the UI.** When the UI streams bits live from a pool (Section 7.1), it may compute, over the bits shown so far, only: the fraction of ones, the Shannon entropy h(p̂) of that fraction, and counts of matches (the score of a guessing round). These live in one file, `ui/src/lib/stats.ts`, are for display only, and are never written back or used to choose wording. A test (`tests/test_ui_stats.py`) runs that file under Node on the exported pool bits and checks its values against `pipeline.analysis` on the same bits. Everything else, including every interval, H∞, running curve, and comparative phrase, is precomputed in Python.
+
 `results.json` contains:
 
 - `source`, `synthetic`, `run_id`, backend, job ID, timestamp, physical qubits, qubit selection method, and candidate count
@@ -188,11 +190,20 @@ The Sampler runs locally on Qiskit Aer (a dev dependency). With a fake backend a
 
 `export [--run <run_id> | --sample <name>]` writes `ui/src/data/demo.json`, the only data file the UI imports. By default it uses the latest complete folder in `data/runs/` (run ids start with a UTC timestamp, so the greatest name is the newest); if there is none, it uses `data/sample/synthetic-v1/`. It computes everything with the same `pipeline.analysis` and `pipeline.attacker` functions as `analyze`.
 
-`demo.json` holds: metadata for both sources (backend, job ID, date, qubit count, whether qubits were selected by readout error and from how many candidates, the run folder name, and `synthetic` and `sample` flags); Shannon entropy for each stream (per qubit, mean, and pooled for quantum); per-qubit P(1), readout error, z-score against 0.5, and bias-attacker accuracy; bias summary statistics (mean P(1), mean and worst-case |P(1) − 0.5|); the bias tests below; a 128×128 bitmap of the first 16,384 bits of each stream; the first 200 held-out bits of each stream with the attacker's prediction for each (for an audience guessing game); and both attackers' accuracy, 95% Wilson interval, H∞ at the point estimate and at the conservative bound, and running accuracy downsampled to at most 500 points; and the cross-checks from Section 3.1, each with its accuracy, 95% interval, and whether the interval contains 0.5.
+`demo.json` (schema version 2) holds:
+
+- metadata for both sources (backend, job ID, date, qubit count, whether qubits were selected by readout error and from how many candidates, the run folder name, and `synthetic` and `sample` flags);
+- Shannon entropy for each stream (per qubit, mean, and pooled for quantum); per-qubit P(1), readout error, z-score against 0.5, and bias-attacker accuracy; bias summary statistics (mean P(1), mean and worst-case |P(1) − 0.5|); the bias tests below;
+- a 128×128 bitmap of the first 16,384 bits of each stream (these lie inside each attacker's training data for the default run sizes; export records whether they do);
+- a **pool** per stream: 20,000 consecutive **held-out** bits starting right after the attacker's training data, with the attacker's prediction for every pool bit, both packed compactly (base64 of the bits packed 8 per byte, most significant bit first). The UI streams and games use only these bits, never repeating or wrapping them. The pool comes only from held-out data: export refuses to write it otherwise;
+- both attackers' accuracy, 95% Wilson interval, H∞ at the point estimate and at the conservative bound, and running accuracy downsampled to at most 500 points, with the 95% Wilson interval at every running point;
+- the cross-checks from Section 3.1, each with its accuracy, 95% interval, whether the interval contains 0.5, and its running accuracy and interval in the same form;
+- the **device layout** when Qiskit ships an offline description of the run's backend (for `ibm_fez`, `FakeFez` from `qiskit_ibm_runtime.fake_provider`, read from files bundled with the package, with no account or network): qubit count, the undirected coupling edges, and drawing coordinates derived offline from the coupling graph. It is labelled on screen as Qiskit's bundled device description, not as live calibration. It is `null` when no such description exists (for example for synthetic data);
+- `copy`: comparative phrases chosen by documented rules (`pipeline/wording.py`, described in SCHEMA.md) from the measured values. The UI uses them verbatim and never chooses comparative words itself.
 
 **Bias tests.** For each qubit, z = (P(1) − 0.5) / √(0.25 / shots); qubits with |z| > 3 are listed. A chi-square test (shots·Σ(p̂ⱼ − p̄)² / (p̄(1 − p̄)), N − 1 degrees of freedom) asks whether per-qubit P(1) values spread more than shot noise predicts. The overall mean P(1) is tested against 0.5 both as a pooled binomial z (which assumes all qubits share one P(1)) and as a one-sample t-test across the per-qubit values (which does not). **Flagged qubits are reported, never dropped or filtered.**
 
-The schema is `ui/src/data/demo.schema.json`, documented in `ui/src/data/SCHEMA.md`. Every object in it is closed. Fields are copied from run metadata by an explicit allow-list. Before writing, `export` validates against the schema, refuses output that contains anything secret-like (`crn:`, the account name, `.qiskit`, long token-like strings, or local file paths), and refuses output of 1 MB or more.
+The schema is `ui/src/data/demo.schema.json`, documented in `ui/src/data/SCHEMA.md`. Every object in it is closed. Fields are copied from run metadata by an explicit allow-list. Before writing, `export` validates against the schema, refuses output that contains anything secret-like (`crn:`, the account name, `.qiskit`, long token-like strings, or local file paths), and refuses output of 1 MB or more, so the page loads quickly on a phone.
 
 ## 8. Notebook
 
@@ -214,8 +225,8 @@ The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook 
 
 ### 9.1 A hybrid of a presentation and an app
 
-- **Presenter view** (the default). A slide deck shown on a projector: full-screen scenes on a fixed 16:9 stage, designed for 1920×1080 and identical in proportion at 1280×720. Navigation with the arrow keys and a presentation clicker (PageUp/PageDown, Space), a subtle progress indicator, presenter notes toggled with N (hidden by default), and fullscreen with F. Some scenes contain interactive **panels** (Section 9.3).
-- **Audience view**, selected with the query parameter `?view=audience`. A phone-first page designed for portrait phones (390×844) in **explore mode**: people browse the same data and panels freely, at their own pace, during or after the talk.
+- **Presenter view** (the default). A slide deck shown on a projector: full-screen scenes on a fixed 16:9 stage, designed for 1920×1080 and identical in proportion at 1280×720. It opens on the first slide. Navigation with the arrow keys and a presentation clicker (PageUp/PageDown, Space), a subtle progress indicator, presenter notes toggled with N (hidden by default), and fullscreen with F. A scene may have **steps**: "next" first reveals the scene's next step and only then moves on, and "back" from a scene's first step lands on the last step of the scene before. Some scenes contain interactive **panels** (Section 9.5).
+- **Audience view**, selected with the query parameter `?view=audience`. A phone-first page designed for portrait phones (390×844). It has two modes, switched at the top: a short **guided tour** that shows one panel at a time in the same order as the talk, with Back and Next buttons, and **explore**, which shows every panel on one scrolling page. People use it at their own pace, during or after the talk.
 
 **Audience participation is in person.** People raise hands and call out guesses, and the presenter presses keys to reveal answers and results on the projector. There is no room, no real-time sync between devices, no audience vote counting, and no backend of any kind.
 
@@ -231,26 +242,44 @@ The notebook is committed with outputs cleared (an `nbstripout` pre-commit hook 
 
 The tasks `ui-dev` and `ui-build` (Section 10) run the first and third. Builds use relative URLs, so the static copy for phones is either build (`ui/dist/` or `demo/index.html`) placed on any static host; no server code is involved. The primitives page, which shows every reusable primitive rendered with real data from `demo.json`, opens with `#primitives` or `?primitives` (both work under `file://`) or the P key.
 
+**The audience URL is a build-time setting.** `VITE_AUDIENCE_URL` (an environment variable when building, for example `VITE_AUDIENCE_URL=https://example.org/qrng/?view=audience npm run build:demo`) is the exact address phones should open. The opening slide shows it as a QR code, generated inside the app by a bundled library (never by an online service), and as short text without the `https://`. When the setting is empty or missing, the opening slide shows the title only. Only `http:` and `https:` URLs are accepted.
+
 ### 9.3 Design rules
 
 - **Tokens.** Colours, type, spacing, layout, and motion are CSS variables in one file, `ui/src/styles/tokens.css`. IBM Plex Sans for text and IBM Plex Mono for numbers and bits, self-hosted (no CDN), including the subsets needed for symbols such as ∞, ≈, ×, ±, →, and ₂. On the stage, body text is at least 24px at 1920×1080 and headline numbers at least 96px.
 - **Colour.** An off-white background, near-black text, and one muted grey for secondary text. Exactly two semantic colours, classical (orange) and quantum (blue), with the same hues as `pipeline/plotstyle.py`. The exact hues are used for chart marks; darker versions of the same hues, meeting WCAG AA on the background, are used for text and big numbers. No gradients, glassmorphism, decorative shadows, emoji, or stock icons.
 - **Motion.** Short transitions only (200–400 ms, ease-out), used to reveal results. `prefers-reduced-motion` turns them off.
 - **Panels.** An interactive section is a `Panel`: it sits inside a scene in the presenter view, or stands alone in the audience view's explore mode. Every control in a panel is at least 44 CSS px in both dimensions, and nothing depends on hover.
-- **Keys.** The deck's key handler ignores key events aimed at interactive elements (buttons, inputs, and anything with an interactive role), so Space or a digit pressed in a panel never also moves the deck.
+- **Keys.** The deck's key handler ignores key events aimed at interactive elements (buttons, inputs, and anything with an interactive role), so Space or a digit pressed in a panel never also moves the deck. Panels on the current slide may listen for their own keys (0 and 1 for a guess, R for a reveal), which the deck never uses; they ignore the same interactive targets and any key with a modifier.
+- **Copy.** Plain English throughout. Technical terms (min-entropy, Shannon entropy, Wilson interval, Mersenne Twister, z-score) appear only in small secondary text.
 - **Responsive.** The presenter view is checked at 1920×1080 and 1280×720; the audience view at 390×844.
 
 ### 9.4 The presentation scenes
 
-The screens, in order:
+The slides, in order. Every slide has presenter notes.
 
-1. **This ran on a real quantum computer:** backend, job ID, date, and the physical qubits used, with a note that they were selected by lowest readout error.
-2. **Both look random:** fraction of ones and Shannon entropy side by side, nearly identical.
-3. **The attack:** the attacker sees 624 words of classical output and then predicts the rest; for quantum, it learns each qubit's bias and guesses. Show both accuracies.
-4. **The result:** H∞ for both streams, with confidence intervals.
-5. **Why quantum isn't 50/50:** readout bias, explained plainly, with the per-qubit chart.
+1. **Opening:** the title, plus a QR code and short URL inviting people to play along on their phones (Section 9.2). With no URL set, the title only.
+2. **Why randomness matters:** where unpredictable numbers are used (passwords and keys, lotteries, simulations, games), in plain words.
+3. **Meet the two machines:** the Machines panel.
+4. **Can you tell them apart?** The Tell-them-apart panel; a step reveals which is which, and a further step shows both Shannon gauges with the rule-chosen comparison phrase.
+5. **Guess the next bit:** the Guess game, with a choice of machine.
+6. **Enter the attacker:** the Guess game with the attacker row on; a step brings in the Attacker panel.
+7. **Measuring unpredictability:** the Unpredictability panel.
+8. **Your turn: explore:** invites phone users to explore; a step shows the Hardware panel.
+9. **Takeaway:** quantum computers are real, accessible today, and produce randomness guaranteed by physics. The presenter notes carry the honest caveat about secure classical generators (Section 4.7) and the cross-check results.
 
-Presenter notes, including the `os.urandom` point and the cross-checks, are in a panel toggled with the N key and hidden by default. If `demo.json` says `synthetic: true`, a label reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen of both views and can't be dismissed.
+Presenter notes are in a panel toggled with the N key and hidden by default. If `demo.json` says `synthetic: true`, a label reading "SYNTHETIC DATA: not from quantum hardware" stays on every screen of both views and can't be dismissed.
+
+### 9.5 Panels
+
+Each panel works inside a slide and standalone in the audience view. All numbers come from `demo.json`, apart from the display-only counts in Section 7.
+
+- **Machines.** Classical and quantum side by side (stacked on phones). "Generate bits" streams bits from each stream's pool, with a speed control; the bitmaps fill in live, and the fraction of ones and Shannon entropy of the bits shown so far update as bits arrive. When a pool runs out, generation stops and says "End of the recorded bits"; bits are never repeated or wrapped. The real run's backend, job ID, date, and qubit count are shown and labelled as the actual run (or as sample data when synthetic).
+- **Tell them apart.** Two unlabelled bitmaps, in an order chosen at random for each session, and a reveal (the R key, a button, or the slide's next step). No vote counting.
+- **Guess game.** Rounds of "guess the next bit" against a chosen machine. The presenter presses 0 or 1 (keys or large buttons) for the room's guess; the true bit is revealed and a running score shows. An optional attacker row shows what the attacker guessed each round and its score alongside the room's. Each session starts at a random offset in the pool that leaves room for at least 200 rounds, and the game stops at the end of the pool.
+- **Attacker.** Choose a machine and launch. The observation phase is animated (624 numbers for classical, the training half for quantum), then the running-accuracy line replays with its 95% band. A toggle shows the cross-checks (each attacker on the other machine).
+- **Hardware.** The backend's qubits from Qiskit's bundled device description, with the qubits used highlighted and coloured by bias and the flagged qubits marked. Tapping or clicking selects the qubit nearest the pointer and shows its P(1), readout error, and z-score. On phones the map can be zoomed and scrolled sideways so single qubits are easy to tap. Secondary text says flagged qubits were kept, not removed. If there is no device description (synthetic data), the panel says so.
+- **Unpredictability.** The two min-entropy numbers with their intervals and conservative values, and the plain reading: "How many bits of genuine surprise each bit contains, for someone trying to predict it." The formula appears in small text.
 
 ## 10. Tasks
 
@@ -279,7 +308,7 @@ Everything runs through `python -m pipeline.tasks <task>`.
 
 - **Platforms:** both machines are macOS, and the workflow must behave identically on both. Use `pathlib` for all paths and resolve them from the repo root (`pipeline/paths.py`), never from the current directory.
 - **Python:** 3.11 or newer. Use a plain `python -m venv .venv` and `pip`. Exact pins are in `requirements.txt` (runtime) and `requirements-dev.txt` (tools, plus the package in editable mode); `pyproject.toml` holds compatible ranges and tool configuration.
-- **Node:** both machines use the version in `.nvmrc` (26.3.0); `ui/package.json` requires 24 or newer. UI dependencies are pinned exactly in `ui/package.json`, with `ui/package-lock.json` committed. Install with `npm ci`. Playwright is a dev dependency used only by `ui/scripts/verify.mjs` for visual and offline checks; no run mode or task needs it.
+- **Node:** both machines use the version in `.nvmrc` (26.3.0); `ui/package.json` requires 24 or newer. UI dependencies are pinned exactly in `ui/package.json`, with `ui/package-lock.json` committed. Install with `npm ci`. Playwright is a dev dependency used only by `ui/scripts/verify.mjs` for visual and offline checks; no run mode or task needs it. The one runtime dependency besides React is `qrcode-generator`, bundled into the build so the QR code needs no network. A few pure TypeScript modules (`ui/src/lib/stats.ts`, `ui/src/lib/pool.ts`) are also run directly by Node, using its built-in type stripping, from pytest (`tests/test_ui_stats.py`), so they use only erasable TypeScript syntax and import nothing from the browser.
 - **Quality checks:** ruff for linting and formatting, mypy in strict mode, and pytest. Pre-commit runs detect-secrets, ruff, mypy, and basic hygiene hooks.
 - **Tests never touch IBM Quantum.** Collector tests use a mocked `QiskitRuntimeService`; the Sampler is either mocked or the real client-side Sampler running locally on Aer (`qiskit-aer`, a dev dependency). They must cover refusal on a non-Open-Plan instance, refusal on low remaining allowance, the bit-order conversion, and that no CRN or token appears in output.
 - **Version control:** run folders, sample data, the notebook (outputs cleared), and `demo/index.html` are committed. `data/scratch/`, `scratch/`, `.env*`, and virtualenvs are not.
