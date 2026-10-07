@@ -4,3 +4,8 @@
   aspect-ratio: 1;
   outline: var(--line-hair) solid var(--color-rule);
 }
+
+/* A picture that isn't square (a live run's bits) sits centred in the same square box. */
+.bitmap--shaped {
+  margin-inline: auto;
+}

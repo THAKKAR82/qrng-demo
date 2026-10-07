@@ -85,3 +85,30 @@ export function randomStart(length: number, rounds: number = GUESS_ROUNDS, rando
   const span = length - rounds + 1
   return Math.min(span - 1, Math.floor(random() * span))
 }
+
+/** How a stream of bits is laid out as a picture, row by row (see `pictureShape`). */
+export interface PictureShape {
+  columns: number
+  rows: number
+}
+
+/**
+ * The picture for `n` bits that aren't a 128×128 square, such as a live run's (SPEC.md,
+ * Section 9.5): `columns` is the largest divisor of `n` no greater than √n and `rows` is
+ * `n / columns`, so 2,000 bits are 40 × 50 and every cell is used. If that would be more
+ * than 1.5 times taller than wide, `columns` is ⌈√n⌉ and the last row is partly blank.
+ */
+export function pictureShape(n: number): PictureShape {
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new RangeError(`a picture needs a positive whole number of bits, got ${n}`)
+  }
+  let columns = Math.floor(Math.sqrt(n))
+  while (n % columns !== 0) {
+    columns -= 1
+  }
+  if (n / columns <= 1.5 * columns) {
+    return { columns, rows: n / columns }
+  }
+  columns = Math.ceil(Math.sqrt(n))
+  return { columns, rows: Math.ceil(n / columns) }
+}

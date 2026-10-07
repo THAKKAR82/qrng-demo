@@ -19,7 +19,9 @@
 // can't be reached, and when it is armed: a run that finishes (each stage, the job ID, the
 // fresh bits labelled and streamed, at both stage sizes), the 120-second timeout (with a
 // fake clock), a failed job, the server vanishing mid-run, and a refused start. Every API
-// request must carry the token.
+// request must carry the token. While fresh bits play, both pictures must be 40 × 50 with
+// square cells, in the same on-screen square as the 128 × 128 picture, captioned "40 × 50
+// bits"; otherwise they must be the normal square picture with no caption.
 //
 // Presentation, at 1920×1080 and 1280×720: opens with no hash (it must land on slide 1),
 // walks every slide and every step to the end, saves a screenshot of each, checks fonts,
@@ -779,6 +781,39 @@ async function liveScenario(name, { size = PRESENTER_SIZES[0], server, fakeClock
   await context.close()
 }
 
+/** Each machine's picture: its box on screen, its frame's box, its canvas pixels, and its caption. */
+async function pictures(page) {
+  return page.$$eval('.machine', (machines) =>
+    machines.map((m) => {
+      const canvas = m.querySelector('canvas.bitmap')
+      const frame = m.querySelector('.machine__frame')
+      const box = (el) => {
+        const r = el.getBoundingClientRect()
+        return { x: r.x, y: r.y, width: r.width, height: r.height }
+      }
+      return {
+        source: m.classList.contains('machine--quantum') ? 'quantum' : 'classical',
+        canvas: box(canvas),
+        frame: box(frame),
+        pixels: { width: canvas.width, height: canvas.height },
+        caption: m.querySelector('.machine__caption')?.textContent?.trim() ?? null,
+      }
+    }),
+  )
+}
+
+/** The recorded-run picture: 128 × 128, square, filling its frame, with no caption. */
+async function expectNormalPictures(page, tag) {
+  const shown = await pictures(page)
+  if (shown.length !== 2) fail(`${tag}: expected two machine pictures, saw ${shown.length}`)
+  for (const p of shown) {
+    if (Math.abs(p.canvas.width - p.canvas.height) > 1) fail(`${tag}: ${p.source} picture is not square (${p.canvas.width}×${p.canvas.height})`)
+    if (Math.abs(p.canvas.width - p.frame.width) > 1 || Math.abs(p.canvas.height - p.frame.height) > 1) fail(`${tag}: ${p.source} picture does not fill its square`)
+    if (p.caption !== null) fail(`${tag}: ${p.source} picture has a caption: "${p.caption}"`)
+  }
+  return shown
+}
+
 const RECORDED = /showing (the run from \d{1,2} [A-Z][a-z]+ \d{4}, \d{2}:\d{2} UTC|the recorded sample data)\./
 
 async function liveChecks() {
@@ -790,6 +825,7 @@ async function liveChecks() {
     if ((await page.getByRole('button', { name: LIVE_BUTTON }).count()) > 0) fail(`${tag}: live control shown`)
     if ((await page.locator('.live-run').count()) > 0) fail(`${tag}: live status shown`)
     if (/Live run/.test(await notesText(page))) fail(`${tag}: notes mention the live run`)
+    await expectNormalPictures(page, tag)
     const asked = calls.map((c) => `${c.method} ${c.pathname}`)
     if (asked.join() !== 'GET /api/live/health') fail(`${tag}: expected one health check, saw ${asked.join(', ')}`)
   })
@@ -822,6 +858,7 @@ async function liveChecks() {
       const scale = size.width / 1920
       if (box === null || box.width < 44 * scale || box.height < 44 * scale) fail(`${tag}: live button under 44 px`)
       if (!/Live run/.test(await notesText(page))) fail(`${tag}: notes don't explain the live run`)
+      const before = await expectNormalPictures(page, `${tag} before the run`)
       await page.getByRole('button', { name: 'Fast', exact: true }).click()
       await button.click()
       // The button gives up focus, so the clicker still drives the deck.
@@ -835,6 +872,21 @@ async function liveChecks() {
       await waitText(page.locator('.machine--quantum .run-facts'), /^Fresh from mock_backend, 7 October 2026, 14:31 UTC: job d3mockjob00000000000, 10 qubits × 200 shots \(qubits picked for lowest readout error from 156\)\.$/, `${tag}: fresh label`)
       await waitText(page.locator('.machines__status'), /^End of the fresh bits\.$/, `${tag}: fresh bits streamed to the end`)
       if ((await page.locator('.machine--quantum .machine__stats dd.num').first().textContent())?.trim() === '–') fail(`${tag}: no counts for the fresh bits`)
+      // Both pictures are sized to the 2,000 bits (40 × 50), with square cells, inside the
+      // same on-screen square as the 128 × 128 picture, and captioned with the dimensions.
+      const after = await pictures(page)
+      for (const p of after) {
+        const normal = before.find((b) => b.source === p.source)
+        if (p.caption !== '40 × 50 bits') fail(`${tag}: ${p.source} caption is "${p.caption}", expected "40 × 50 bits"`)
+        if (normal !== undefined) {
+          const same = (a, b) => Math.abs(a - b) <= 1
+          if (!same(p.frame.width, normal.frame.width) || !same(p.frame.height, normal.frame.height)) fail(`${tag}: ${p.source} picture's square changed size`)
+          if (!same(p.canvas.height, normal.canvas.height)) fail(`${tag}: ${p.source} live picture is ${p.canvas.height}px tall, not ${normal.canvas.height}px like the normal one`)
+          if (!same(p.canvas.width, (normal.canvas.height * 40) / 50)) fail(`${tag}: ${p.source} live picture is ${p.canvas.width}px wide, expected 40/50 of its height`)
+          if (!same(p.canvas.x + p.canvas.width / 2, p.frame.x + p.frame.width / 2)) fail(`${tag}: ${p.source} live picture is not centred in its square`)
+        }
+        if (Math.abs(p.pixels.width / p.pixels.height - 40 / 50) > 0.02) fail(`${tag}: ${p.source} canvas is drawn ${p.pixels.width}×${p.pixels.height}, not 40:50`)
+      }
       const posts = calls.filter((c) => c.method === 'POST')
       if (posts.length !== 1) fail(`${tag}: expected one POST, saw ${posts.length}`)
       if (size === PRESENTER_SIZES[0]) {
@@ -860,6 +912,7 @@ async function liveChecks() {
     if (!RECORDED.test(text)) fail(`${tag}: label does not name the recorded run: "${text}"`)
     if (!new RegExp(`Job ${MOCK_JOB} may still finish on IBM\\.`).test(text)) fail(`${tag}: no note that the job may still finish`)
     if ((await page.locator('.machine--quantum .run-facts', { hasText: 'Fresh from' }).count()) > 0) fail(`${tag}: fresh label after a timeout`)
+    await expectNormalPictures(page, tag)
     const polls = () => calls.filter((c) => c.pathname.startsWith('/api/live/runs/')).length
     const before = polls()
     await page.clock.fastForward('00:05')
@@ -873,6 +926,7 @@ async function liveChecks() {
     const text = await waitText(page.locator('.live-run'), /^The live run didn't finish; showing /, `${tag}: failure label`)
     if (!RECORDED.test(text)) fail(`${tag}: label does not name the recorded run: "${text}"`)
     if ((await page.locator('.machine--quantum .run-facts', { hasText: 'Fresh from' }).count()) > 0) fail(`${tag}: fresh label after a failure`)
+    await expectNormalPictures(page, tag)
   })
 
   await liveScenario('vanished', { server: armedServer({ vanish: true }) }, async ({ page, tag }) => {

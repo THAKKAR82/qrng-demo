@@ -3,7 +3,7 @@ import { pools } from '../data/demo'
 import type { Source } from '../data/types'
 import { count, fixed, percent } from '../lib/format'
 import { useLiveRun } from '../lib/live'
-import { advanceBy } from '../lib/pool'
+import { advanceBy, pictureShape, type PictureShape } from '../lib/pool'
 import { useSessionNumber } from '../lib/session'
 import { SOURCES } from '../lib/sources'
 import { bitStats, countOnes } from '../lib/stats'
@@ -28,7 +28,7 @@ const SPEEDS: readonly Segment<Speed>[] = [
   { value: 'fast', label: 'Fast' },
 ]
 
-/** Side of the live picture, in cells; it shows the first side² bits generated. */
+/** Side of the picture of recorded bits, in cells; it shows the first side² bits generated. */
 const PICTURE_SIDE = 128
 /** Most recent bits written out as digits. */
 const RECENT_BITS = 16
@@ -48,6 +48,8 @@ export function MachinesPanel({ placement = 'inline', className, hideHeader, del
   const quantumBits = fresh !== null ? fresh.bits : pools.quantum.bits
   // Both streams play in step, so the shorter one sets the end.
   const length = Math.min(pools.classical.length, quantumBits.length)
+  // A live run's pictures are sized to its bits (40 × 50 for 2,000), not 128 × 128.
+  const shape = fresh !== null ? pictureShape(length) : null
 
   const [position, setPosition] = useSessionNumber(
     fresh !== null ? `machines:live:${fresh.runId}` : 'machines:position',
@@ -121,6 +123,7 @@ export function MachinesPanel({ placement = 'inline', className, hideHeader, del
             source={source}
             bits={source === 'quantum' ? quantumBits : pools.classical.bits}
             position={position}
+            shape={shape}
             facts={
               source === 'classical' ? (
                 <ClassicalRunFacts />
@@ -153,10 +156,12 @@ interface MachineProps {
   /** The stream being played: a pool, or a live run's fresh bits. */
   bits: Uint8Array
   position: number
+  /** The picture's shape for a live run; null for the 128 × 128 picture of recorded bits. */
+  shape: PictureShape | null
   facts: ReactNode
 }
 
-function Machine({ source, bits: stream, position, facts }: MachineProps) {
+function Machine({ source, bits: stream, position, shape, facts }: MachineProps) {
   // Bounded like readPool: bits are never repeated or wrapped (SPEC.md, Section 9.5).
   if (!Number.isInteger(position) || position < 0 || position > stream.length) {
     throw new RangeError(`read of ${position} bits from a stream of ${stream.length}`)
@@ -170,11 +175,22 @@ function Machine({ source, bits: stream, position, facts }: MachineProps) {
       <h3 className={`machine__name is-${source}`}>{MACHINE_NAME[source]}</h3>
       <div className="machine__body">
         <div className="machine__picture">
-          <Bitmap
-            source={source}
-            bitmap={{ size: PICTURE_SIDE, bits: stream, filled: position }}
-            label={`${MACHINE_NAME[source]}: the ${count(Math.min(position, PICTURE_SIDE ** 2))} bits generated so far as a picture`}
-          />
+          <div className="machine__frame">
+            <Bitmap
+              source={source}
+              bitmap={
+                shape === null
+                  ? { size: PICTURE_SIDE, bits: stream, filled: position }
+                  : { size: shape.columns, rows: shape.rows, bits: stream, filled: position }
+              }
+              label={`${MACHINE_NAME[source]}: the ${count(Math.min(position, shape === null ? PICTURE_SIDE ** 2 : shape.columns * shape.rows))} bits generated so far as a picture${shape === null ? '' : `, ${shape.columns} wide and ${shape.rows} tall`}`}
+            />
+          </div>
+          {shape !== null && (
+            <p className="term machine__caption">
+              <Num>{count(shape.columns)}</Num> × <Num>{count(shape.rows)}</Num> bits
+            </p>
+          )}
         </div>
         <dl className="machine__stats">
           <div>

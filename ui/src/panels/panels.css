@@ -132,6 +132,18 @@ dt .term {
   align-items: start;
 }
 
+/* The picture always takes the same square; a live run's narrower picture is centred in it. */
+.machine__frame {
+  display: flex;
+  align-items: center;
+  aspect-ratio: 1;
+}
+
+.machine__caption {
+  margin-top: var(--space-1);
+  text-align: center;
+}
+
 .machine__stats {
   display: flex;
   flex-direction: column;
