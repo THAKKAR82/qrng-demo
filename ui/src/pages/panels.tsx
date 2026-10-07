@@ -5,6 +5,7 @@
 
 import { useState } from 'react'
 import { demo } from '../data/demo'
+import { poolPreview } from '../lib/preview'
 import type { Source } from '../data/types'
 import { count, fixed, percent, percentRange } from '../lib/format'
 import { SOURCE_NAME, SOURCES } from '../lib/sources'
@@ -74,7 +75,7 @@ export function NextBitsPanel({
   perRow = 25,
 }: PanelPlacement & { perRow?: number }) {
   const [source, setSource] = useState<Source>('classical')
-  const next = stream[source].next_bits
+  const next = poolPreview(source)
   return (
     <Panel
       placement={placement}

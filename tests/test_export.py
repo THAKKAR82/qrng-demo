@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from pipeline import classical, export, runs
+from pipeline.attacker import BiasAttacker
 from pipeline.paths import REPO_ROOT, RUNS_DIR, SAMPLE_DIR
 from pipeline.tasks import main
 
@@ -68,6 +69,10 @@ def _make_run(
 
 
 def _secret_like(text: str) -> list[str]:
+    """Secret-like strings in a serialized export. The pools' packed bits are swapped for a
+    placeholder first (base64 bits look token-like by chance); ``scannable_text`` only does
+    that after checking they are plain base64 holding exactly the pool's bits."""
+    text = export.scannable_text(json.loads(text))
     patterns = [
         r"crn:",
         r"qrng-open",
@@ -168,9 +173,57 @@ def test_export_writes_valid_demo_without_secrets(tmp_path: Path) -> None:
     assert "".join(q["bitmap"]["rows"][:2]) == "".join(map(str, bits.reshape(-1)[:256]))
     assert len(demo["classical"]["bitmap"]["rows"]) == 128
 
-    # The guessing-game bits are the first held-out bits, after the attacker's training data.
-    assert q["next_bits"]["bits"] == bits[200:202].reshape(-1)[:200].tolist()
-    assert len(demo["classical"]["next_bits"]["bits"]) == 200
+    # The pools are the first held-out bits, right after the attackers' training data,
+    # with the attackers' predictions for exactly those bits.
+    q_pool = q["pool"]
+    assert q_pool["start_bit"] == 200 * 100 == q["attacker"]["n_training_bits"]
+    assert q_pool["n_bits"] == 20_000
+    q_pool_bits = export.unpack_bits(q_pool["bits"], q_pool["n_bits"])
+    assert q_pool_bits.tolist() == bits[200:].reshape(-1)[:20_000].tolist()
+    majority = (bits[:200].mean(axis=0) > 0.5).astype(np.uint8)
+    q_predictions = export.unpack_bits(q_pool["predictions"], q_pool["n_bits"])
+    assert q_predictions.tolist() == np.tile(majority, 200).tolist()
+
+    c = demo["classical"]
+    words = np.load(run / runs.CLASSICAL_NPZ)["words"]
+    c_stream = classical.words_to_bits(words)
+    c_pool = c["pool"]
+    assert c_pool["start_bit"] == 624 * 32 == c["attacker"]["n_training_bits"]
+    assert c_pool["n_bits"] == 20_000
+    c_pool_bits = export.unpack_bits(c_pool["bits"], c_pool["n_bits"])
+    assert c_pool_bits.tolist() == c_stream[624 * 32 :][:20_000].tolist()
+    # The state-recovery attacker predicts every held-out classical bit.
+    assert export.unpack_bits(c_pool["predictions"], 20_000).tolist() == c_pool_bits.tolist()
+
+    # Bitmaps are inside the training data here (16,384 <= 20,000 and 19,968 bits).
+    assert q["bitmap"]["within_training"] is True
+    assert c["bitmap"]["within_training"] is True
+
+    # Running accuracy carries its interval at every point.
+    for attacker in (q["attacker"], c["attacker"]):
+        running = attacker["running"]
+        assert len(running["ci_low"]) == len(running["ci_high"]) == len(running["n_bits"])
+        assert all(
+            lo <= a <= hi
+            for lo, a, hi in zip(
+                running["ci_low"], running["accuracy"], running["ci_high"], strict=True
+            )
+        )
+        assert attacker["min_entropy_conservative"] <= attacker["min_entropy"]
+        assert attacker["min_entropy"] <= attacker["min_entropy_high"]
+
+    # No bundled description for a made-up backend.
+    assert demo["layout"] is None
+    assert set(demo["copy"]) == {
+        "shannon_comparison",
+        "classical_attack",
+        "quantum_attack",
+        "unpredictability_comparison",
+        "bias_note",
+    }
+    assert demo["copy"]["classical_attack"] == (
+        "The attacker predicted every classical bit correctly."
+    )
 
     # The biased qubit is flagged and reported, not dropped.
     assert len(q["qubits"]) == 100
@@ -184,6 +237,7 @@ def test_export_writes_valid_demo_without_secrets(tmp_path: Path) -> None:
     assert cross["mt_on_quantum"]["n_predicted"] == (40_000 // 32 - 624) * 32
     assert cross["bias_on_classical"]["n_predicted"] == 200 * 100
     for check in cross.values():
+        assert len(check["running"]["n_bits"]) == len(check["running"]["ci_low"])
         # The classical stream is freshly seeded, so a 95% CI misses 0.5 one time in 20;
         # check the flag against its own CI, and the accuracy against a wide band.
         assert check["consistent_with_half"] is (check["ci_low"] <= 0.5 <= check["ci_high"])
@@ -199,7 +253,50 @@ def test_export_of_sample_is_labelled_synthetic(tmp_path: Path) -> None:
     assert demo["metadata"]["backend"] is None
     assert demo["metadata"]["job_id"] is None
     assert demo["quantum"]["qubits"][0]["physical_qubit"] is None
+    assert demo["layout"] is None
     assert _secret_like(out.read_text(encoding="utf-8")) == []
+
+
+def test_export_of_ibm_fez_run_includes_bundled_layout(tmp_path: Path) -> None:
+    run = tmp_path / "2026-11-01T090000Z_ibm_fez"
+    _make_run(run)
+    meta = runs.read_json(run / runs.QUANTUM_JSON)
+    meta["backend"]["name"] = "ibm_fez"
+    runs.write_json(run / runs.QUANTUM_JSON, meta)
+    out = tmp_path / "demo.json"
+    export.write_demo(run, out, is_sample=False)
+    layout = _validate(out)["layout"]
+    assert layout["description"] == "Qiskit's bundled device description"
+    assert layout["device"] == "FakeFez"
+    assert layout["num_qubits"] == 156
+    assert len(layout["coordinates"]) == 156
+
+
+def test_pool_refuses_training_bits() -> None:
+    bits = np.zeros((40, 10), dtype=np.uint8)
+    result = BiasAttacker().attack(bits)
+    with pytest.raises(ValueError, match="training"):
+        export._pool(bits.reshape(-1), result, result.n_training_bits - 1)
+
+
+def test_pack_bits_round_trip_and_bit_order() -> None:
+    assert export.pack_bits([1, 0, 0, 0, 0, 0, 0, 1, 1]) == "gYA="  # 0x81, 0x80
+    rng = np.random.default_rng(1)
+    bits = rng.integers(0, 2, 20_003).astype(np.uint8)
+    assert export.unpack_bits(export.pack_bits(bits), bits.size).tolist() == bits.tolist()
+
+
+def test_scannable_text_rejects_non_base64_pool_fields(tmp_path: Path) -> None:
+    run = tmp_path / "2026-11-01T090000Z_ibm_testbed"
+    _make_run(run)
+    demo = export.build_demo(run, is_sample=False)
+    demo["quantum"]["pool"]["bits"] = PLANTED_CRN
+    with pytest.raises(ValueError, match="base64"):
+        export.scannable_text(demo)
+    demo = export.build_demo(run, is_sample=False)
+    demo["quantum"]["pool"]["bits"] = demo["quantum"]["pool"]["bits"] + "AAAA"
+    with pytest.raises(ValueError, match="bits"):
+        export.scannable_text(demo)
 
 
 def test_export_of_committed_real_run_validates(tmp_path: Path) -> None:
@@ -212,6 +309,10 @@ def test_export_of_committed_real_run_validates(tmp_path: Path) -> None:
     assert demo["metadata"]["synthetic"] is False
     assert demo["classical"]["attacker"]["accuracy"] == 1.0
     assert demo["classical"]["attacker"]["min_entropy"] == 0.0
+    assert demo["layout"] is not None
+    # Every pool has room for at least 200 guessing rounds after any start offset.
+    assert demo["quantum"]["pool"]["n_bits"] >= 400
+    assert demo["classical"]["pool"]["n_bits"] >= 400
     assert _secret_like(out.read_text(encoding="utf-8")) == []
     assert out.stat().st_size < 1_000_000
 

@@ -2,6 +2,7 @@
 // real data from demo.json.
 
 import { demo } from '../data/demo'
+import { PREVIEW_BITS, poolPreview } from '../lib/preview'
 import type { CrossCheck } from '../data/types'
 import { count, fixed, percent, percentRange } from '../lib/format'
 import { revealDelay } from '../lib/motion'
@@ -161,13 +162,13 @@ export function BitStreamScene() {
       title="BitStream"
       lede={
         <>
-          The first <Num>{count(quantum.next_bits.bits.length)}</Num> bits each attacker never saw. A bar marks
+          The first <Num>{count(PREVIEW_BITS)}</Num> bits each attacker never saw. A bar marks
           every bit the attacker guessed right; misses are grey.
         </>
       }
     >
       {sources.map((s, i) => {
-        const next = stream[s].next_bits
+        const next = poolPreview(s)
         return (
           <div key={s} className={`primitives__half primitives__half--${i} primitives__stack`}>
             <p className={`primitives__caption is-${s}`}>{SOURCE_NAME[s]}</p>

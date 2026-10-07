@@ -32,14 +32,24 @@ export interface Bitmap {
   size: number
   /** `size` strings of `size` characters, each "0" or "1". */
   rows: string[]
+  /** All its bits lie inside the attacker's training data. */
+  within_training: boolean
 }
 
-export interface NextBits {
+/** Held-out bits, packed (see lib/pool.ts, which is the only reader). */
+export interface Pool {
   start_bit: number
-  /** 200 values, each 0 or 1. */
-  bits: number[]
-  /** The attacker's guess for each bit, 0 or 1. */
-  attacker_predictions: number[]
+  n_bits: number
+  /** Base64 of the bits packed 8 per byte, most significant bit first. */
+  bits: string
+  predictions: string
+}
+
+export interface Running {
+  n_bits: number[]
+  accuracy: number[]
+  ci_low: number[]
+  ci_high: number[]
 }
 
 export interface Attacker {
@@ -51,10 +61,8 @@ export interface Attacker {
   n_training_bits: number
   min_entropy: number
   min_entropy_conservative: number
-  running: {
-    n_bits: number[]
-    accuracy: number[]
-  }
+  min_entropy_high: number
+  running: Running
 }
 
 export interface QubitResult {
@@ -103,7 +111,7 @@ export interface QuantumStream {
   bias_tests: BiasTests
   qubits: QubitResult[]
   bitmap: Bitmap
-  next_bits: NextBits
+  pool: Pool
   attacker: Attacker
 }
 
@@ -114,7 +122,7 @@ export interface ClassicalStream {
     pooled: number
   }
   bitmap: Bitmap
-  next_bits: NextBits
+  pool: Pool
   attacker: Attacker
 }
 
@@ -124,8 +132,30 @@ export interface CrossCheck {
   ci_low: number
   ci_high: number
   n_predicted: number
+  n_training_bits: number
   min_entropy: number
   consistent_with_half: boolean
+  running: Running
+}
+
+export interface DeviceLayout {
+  description: string
+  device: string
+  qiskit_ibm_runtime_version: string
+  num_qubits: number
+  /** Undirected couplings [a, b], a < b. */
+  edges: number[][]
+  /** [x, y] per qubit, in grid units. */
+  coordinates: number[][]
+}
+
+/** Comparative phrases chosen by rule in pipeline/wording.py; shown verbatim. */
+export interface Copy {
+  shannon_comparison: string
+  classical_attack: string
+  quantum_attack: string
+  unpredictability_comparison: string
+  bias_note: string
 }
 
 export interface DemoData {
@@ -138,6 +168,8 @@ export interface DemoData {
     mt_on_quantum: CrossCheck
     bias_on_classical: CrossCheck
   }
+  layout: DeviceLayout | null
+  copy: Copy
 }
 
 /** The two sources. Every colour, label, and chart series is keyed by one of these. */

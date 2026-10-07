@@ -38,9 +38,9 @@ export const primitiveScenes: readonly SceneDef[] = [
     title: 'BitStream',
     notes: (
       <p>
-        Classical bits start at bit <span className="num">{count(classical.next_bits.start_bit)}</span>, right
+        Classical bits start at bit <span className="num">{count(classical.pool.start_bit)}</span>, right
         after the <span className="num">{count(classical.attacker.n_training_bits)}</span> bits the attacker
-        saw. Quantum bits start at bit <span className="num">{count(quantum.next_bits.start_bit)}</span>.
+        saw. Quantum bits start at bit <span className="num">{count(quantum.pool.start_bit)}</span>.
       </p>
     ),
     render: () => <BitStreamScene />,

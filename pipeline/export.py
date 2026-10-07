@@ -8,6 +8,7 @@ for secret-like strings and local paths. See SPEC.md, Section 7.1.
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import re
@@ -18,12 +19,15 @@ import jsonschema
 import numpy as np
 import numpy.typing as npt
 
-from pipeline import runs
+from pipeline import layout, runs, wording
 from pipeline.analysis import (
     analyze_bias,
+    bias_direction,
     bitmap,
+    min_entropy_from_accuracy,
     per_qubit_shannon_entropy,
     shannon_entropy_per_bit,
+    wilson_interval,
 )
 from pipeline.attacker import (
     AttackResult,
@@ -37,10 +41,10 @@ from pipeline.sample import SAMPLE_NAME
 
 DEMO_JSON = UI_DATA_DIR / "demo.json"
 SCHEMA_JSON = UI_DATA_DIR / "demo.schema.json"
-DEMO_SCHEMA_VERSION = 1
+DEMO_SCHEMA_VERSION = 2
 MAX_BYTES = 1_000_000
 BITMAP_SIZE = 128
-NEXT_BITS = 200
+POOL_BITS = 20_000
 
 RUN_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{6}Z_[A-Za-z0-9_\-]+$")
 _REQUIRED_FILES = (runs.QUANTUM_NPZ, runs.QUANTUM_JSON, runs.CLASSICAL_NPZ, runs.CLASSICAL_JSON)
@@ -120,6 +124,28 @@ def _rows(image: npt.NDArray[np.uint8]) -> list[str]:
     return ["".join("1" if b else "0" for b in row) for row in image]
 
 
+def min_entropy_high(result: AttackResult) -> float:
+    """The highest H∞ for any accuracy in the 95% interval: 1 bit if the interval contains
+    0.5, otherwise H∞ at the bound nearer 0.5."""
+    if result.consistent_with_chance:
+        return 1.0
+    return max(min_entropy_from_accuracy(result.ci_low), min_entropy_from_accuracy(result.ci_high))
+
+
+def _running(result: AttackResult) -> dict[str, Any]:
+    """Running accuracy with its 95% Wilson interval at every point."""
+    index = result.running_index
+    # running_accuracy is (hits so far) / index, so this recovers the exact hit counts.
+    hits = np.rint(result.running_accuracy * index).astype(np.int64)
+    bounds = [wilson_interval(int(h), int(n)) for h, n in zip(hits, index, strict=True)]
+    return {
+        "n_bits": [int(i) for i in index],
+        "accuracy": [_num(float(a)) for a in result.running_accuracy],
+        "ci_low": [_num(low) for low, _ in bounds],
+        "ci_high": [_num(high) for _, high in bounds],
+    }
+
+
 def _attacker(result: AttackResult) -> dict[str, Any]:
     return {
         "name": result.attacker,
@@ -130,10 +156,8 @@ def _attacker(result: AttackResult) -> dict[str, Any]:
         "n_training_bits": result.n_training_bits,
         "min_entropy": _num(result.min_entropy),
         "min_entropy_conservative": _num(result.min_entropy_conservative),
-        "running": {
-            "n_bits": [int(i) for i in result.running_index],
-            "accuracy": [_num(float(a)) for a in result.running_accuracy],
-        },
+        "min_entropy_high": _num(min_entropy_high(result)),
+        "running": _running(result),
     }
 
 
@@ -144,21 +168,74 @@ def _cross_check(result: AttackResult) -> dict[str, Any]:
         "ci_low": _num(result.ci_low),
         "ci_high": _num(result.ci_high),
         "n_predicted": result.n_predicted,
+        "n_training_bits": result.n_training_bits,
         "min_entropy": _num(result.min_entropy),
         "consistent_with_half": result.consistent_with_chance,
+        "running": _running(result),
     }
 
 
-def _next_bits(
-    stream: npt.NDArray[np.uint8], result: AttackResult, start_bit: int
-) -> dict[str, Any]:
-    """The first held-out bits (right after the attacker's training data), with the
-    attacker's prediction for each, for the audience guessing game."""
+def pack_bits(bits: npt.ArrayLike) -> str:
+    """Bits packed 8 per byte, most significant bit first, then base64 (SCHEMA.md, pool)."""
+    packed = np.packbits(np.asarray(bits, dtype=np.uint8).reshape(-1), bitorder="big")
+    return base64.b64encode(packed.tobytes()).decode("ascii")
+
+
+def unpack_bits(text: str, n_bits: int) -> npt.NDArray[np.uint8]:
+    """Inverse of ``pack_bits``."""
+    packed = np.frombuffer(base64.b64decode(text), dtype=np.uint8)
+    return np.unpackbits(packed, count=n_bits, bitorder="big")
+
+
+def _pool(stream: npt.NDArray[np.uint8], result: AttackResult, start_bit: int) -> dict[str, Any]:
+    """Held-out bits right after the attacker's training data, with its prediction for
+    each, for the live displays and the guessing game. Refuses anything the attacker saw."""
+    if start_bit < result.n_training_bits:
+        raise ValueError(
+            f"pool would start at bit {start_bit}, inside the {result.n_training_bits} "
+            "training bits"
+        )
+    n = min(POOL_BITS, result.predictions.size, stream.size - start_bit)
+    if n <= 0:
+        raise ValueError("no held-out bits for the pool")
     return {
         "start_bit": start_bit,
-        "bits": [int(b) for b in stream[start_bit : start_bit + NEXT_BITS]],
-        "attacker_predictions": [int(b) for b in result.predictions[:NEXT_BITS]],
+        "n_bits": n,
+        "bits": pack_bits(stream[start_bit : start_bit + n]),
+        "predictions": pack_bits(result.predictions[:n]),
     }
+
+
+def _bitmap(stream: npt.NDArray[np.uint8], result: AttackResult) -> dict[str, Any]:
+    return {
+        "size": BITMAP_SIZE,
+        "rows": _rows(bitmap(stream, BITMAP_SIZE)),
+        "within_training": result.n_training_bits >= BITMAP_SIZE * BITMAP_SIZE,
+    }
+
+
+def _layout(backend_name: str | None, *, synthetic: bool) -> dict[str, Any] | None:
+    found = None if synthetic else layout.device_layout(backend_name)
+    if found is None:
+        return None
+    return {
+        "description": layout.DESCRIPTION,
+        "device": found.device,
+        "qiskit_ibm_runtime_version": layout.runtime_version(),
+        "num_qubits": found.num_qubits,
+        "edges": [list(e) for e in found.edges],
+        "coordinates": [list(c) for c in found.coordinates],
+    }
+
+
+def _summary(result: AttackResult) -> wording.AttackSummary:
+    return wording.AttackSummary(
+        n_correct=result.n_correct,
+        n_predicted=result.n_predicted,
+        accuracy=result.accuracy,
+        ci_low=result.ci_low,
+        ci_high=result.ci_high,
+    )
 
 
 def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
@@ -186,6 +263,20 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
     per_qubit_entropy = per_qubit_shannon_entropy(q_bits)
     abs_bias = np.abs(bias.p_one - 0.5)
     worst = int(np.argmax(abs_bias))
+    c_entropy = shannon_entropy_per_bit(c_stream)
+    q_entropy_mean = float(np.mean(per_qubit_entropy))
+    copy = {
+        "shannon_comparison": wording.shannon_comparison(c_entropy, q_entropy_mean),
+        "classical_attack": wording.attack_phrase("classical", _summary(c_attack)),
+        "quantum_attack": wording.attack_phrase("quantum", _summary(q_attack)),
+        "unpredictability_comparison": wording.unpredictability_comparison(
+            (c_attack.min_entropy_conservative, min_entropy_high(c_attack)),
+            (q_attack.min_entropy_conservative, min_entropy_high(q_attack)),
+        ),
+        "bias_note": wording.bias_note(
+            bias_direction(bias.p_one).direction, float(abs_bias.mean())
+        ),
+    }
 
     qubits = []
     for j in range(n_qubits):
@@ -228,7 +319,7 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
             "fraction_ones": _num(float(q_stream.mean())),
             "shannon_entropy": {
                 "pooled": _num(shannon_entropy_per_bit(q_stream)),
-                "per_qubit_mean": _num(float(np.mean(per_qubit_entropy))),
+                "per_qubit_mean": _num(q_entropy_mean),
                 "per_qubit_min": _num(float(np.min(per_qubit_entropy))),
             },
             "bias_summary": {
@@ -255,22 +346,24 @@ def build_demo(folder: Path, *, is_sample: bool) -> dict[str, Any]:
                 "across_qubits_p": _num(bias.across_qubits_p),
             },
             "qubits": qubits,
-            "bitmap": {"size": BITMAP_SIZE, "rows": _rows(bitmap(q_stream, BITMAP_SIZE))},
-            "next_bits": _next_bits(q_stream, q_attack, bias_attacker.split(shots) * n_qubits),
+            "bitmap": _bitmap(q_stream, q_attack),
+            "pool": _pool(q_stream, q_attack, bias_attacker.split(shots) * n_qubits),
             "attacker": _attacker(q_attack),
         },
         "classical": {
             "n_bits": int(c_stream.size),
             "fraction_ones": _num(float(c_stream.mean())),
-            "shannon_entropy": {"pooled": _num(shannon_entropy_per_bit(c_stream))},
-            "bitmap": {"size": BITMAP_SIZE, "rows": _rows(bitmap(c_stream, BITMAP_SIZE))},
-            "next_bits": _next_bits(c_stream, c_attack, c_attack.n_training_bits),
+            "shannon_entropy": {"pooled": _num(c_entropy)},
+            "bitmap": _bitmap(c_stream, c_attack),
+            "pool": _pool(c_stream, c_attack, c_attack.n_training_bits),
             "attacker": _attacker(c_attack),
         },
         "cross_checks": {
             "mt_on_quantum": _cross_check(cross.mt_on_quantum),
             "bias_on_classical": _cross_check(cross.bias_on_classical),
         },
+        "layout": _layout(backend.get("name"), synthetic=synthetic),
+        "copy": copy,
     }
 
 
@@ -281,6 +374,31 @@ def find_secret_like(text: str) -> list[str]:
         if str(path) in text:
             found.append(label)
     return found
+
+
+_BASE64_RE = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
+
+
+def scannable_text(demo: dict[str, Any]) -> str:
+    """The serialized export with each pool's packed bits replaced by a placeholder, for
+    the secret scan: base64 bits look token-like by chance. Each replaced field must first
+    be plain base64 that decodes to exactly the pool's bits, so nothing else can hide there.
+    """
+    shallow = dict(demo)
+    for stream in ("quantum", "classical"):
+        if not isinstance(shallow.get(stream), dict) or "pool" not in shallow[stream]:
+            continue
+        pool = dict(shallow[stream]["pool"])
+        n_bits = pool["n_bits"]
+        for field in ("bits", "predictions"):
+            text = pool[field]
+            if not isinstance(text, str) or not _BASE64_RE.match(text):
+                raise ValueError(f"{stream}.pool.{field} is not plain base64")
+            if len(base64.b64decode(text, validate=True)) != -(-n_bits // 8):
+                raise ValueError(f"{stream}.pool.{field} does not hold {n_bits} bits")
+            pool[field] = "<packed bits>"
+        shallow[stream] = {**shallow[stream], "pool": pool}
+    return json.dumps(shallow, indent=1, allow_nan=False)
 
 
 def validate(demo: dict[str, Any]) -> None:
@@ -298,7 +416,7 @@ def write_demo(folder: Path, out_path: Path | None = None, *, is_sample: bool) -
     target = DEMO_JSON if out_path is None else out_path
     demo = build_demo(folder, is_sample=is_sample)
     text = json.dumps(demo, indent=1, allow_nan=False) + "\n"
-    problems = find_secret_like(text)
+    problems = find_secret_like(scannable_text(demo))
     if problems:
         raise ValueError(f"refusing to write: secret-like content found ({', '.join(problems)})")
     validate(demo)

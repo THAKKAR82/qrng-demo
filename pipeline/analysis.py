@@ -82,7 +82,10 @@ def wilson_interval(successes: int, n: int, z: float = Z_95) -> tuple[float, flo
     denom = 1.0 + z * z / n
     center = (p + z * z / (2 * n)) / denom
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return max(0.0, center - half), min(1.0, center + half)
+    # At 0 or n successes the exact bound is 0 or 1; rounding would leave it a hair inside.
+    low = 0.0 if successes == 0 else max(0.0, center - half)
+    high = 1.0 if successes == n else min(1.0, center + half)
+    return low, high
 
 
 def bias_per_qubit(bits_2d: npt.ArrayLike) -> npt.NDArray[np.float64]:
@@ -164,7 +167,7 @@ def bitmap(bits: npt.ArrayLike, size: int) -> npt.NDArray[np.uint8]:
     """The first ``size * size`` bits, in stream order, as a ``(size, size)`` image.
 
     A 2D ``(shots, qubits)`` array is flattened shot-major first (SPEC.md, Section 5.2).
-    1 is a white pixel and 0 is black, or however the viewer chooses to draw them.
+    The UI and the notebook draw 1 in the stream's colour and 0 blank (the background).
     """
     flat = _as_bits(bits).reshape(-1)
     needed = size * size

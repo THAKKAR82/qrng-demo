@@ -92,6 +92,15 @@ def test_wilson_interval_at_perfect_accuracy() -> None:
     assert high == 1.0
 
 
+@pytest.mark.parametrize("n", [1, 100, 180_032, 10**7])
+def test_wilson_interval_is_exact_at_the_ends(n: int) -> None:
+    # Rounding must not leave the bound a hair inside 0 or 1: at accuracy 1 that would make
+    # the conservative H∞ (a tiny positive number) exceed the point estimate (0).
+    assert wilson_interval(n, n)[1] == 1.0
+    assert wilson_interval(0, n)[0] == 0.0
+    assert min_entropy_from_accuracy(wilson_interval(n, n)[1]) == 0.0
+
+
 def test_wilson_interval_rejects_bad_counts() -> None:
     with pytest.raises(ValueError):
         wilson_interval(5, 0)

@@ -166,7 +166,7 @@ Comparative phrases, chosen by the rules in `pipeline/wording.py` from the value
 
 | Field | Rule |
 |---|---|
-| `shannon_comparison` | With classical pooled and quantum per-qubit-mean Shannon entropy: "equally random" only if both are at least 0.99; "close to random" if both are at least 0.9; otherwise names the lower one as "less random". |
+| `shannon_comparison` | With classical pooled and quantum per-qubit-mean Shannon entropy: "equally random" only if both are at least 0.99; "close to random" if both are at least 0.9; if neither and they are equal, "equally far from random"; otherwise names the lower one as "less random". |
 | `classical_attack`, `quantum_attack` | From the attacker's hits and interval: every bit correct → "every … bit correctly"; accuracy at least 0.99 → "almost every"; interval contains 0.5 → "no better than a coin flip"; interval entirely between 0.5 and 0.55 → "only slightly better than a coin flip"; interval above 0.5 otherwise → "better than a coin flip, but not perfectly"; interval below 0.5 → "wrong more often than right". |
 | `unpredictability_comparison` | With each stream's H∞ range (`min_entropy_conservative` to `min_entropy_high`): quantum's lower end at least 0.5 above classical's upper end → "far more"; quantum's range entirely above classical's → "more"; the reverse → classical "more"; overlapping → "about the same, within the uncertainty". |
 | `bias_note` | From a sign test on how many qubits read 1 less than half the time (`analysis.bias_direction`) and the mean \|P(1) − 0.5\|: leaning toward 0, toward 1, or mixed; "slightly" when the mean \|P(1) − 0.5\| is under 0.05. |

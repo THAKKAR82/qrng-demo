@@ -20,7 +20,14 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        args: ["--baseline", ".secrets.baseline"]
+        # The pools' packed bits in demo.json are base64 and look high-entropy by design.
+        # Only a line that is exactly such a field, holding nothing but base64, is skipped;
+        # export.scannable_text checks those fields decode to exactly the pool's bits.
+        args:
+          - "--baseline"
+          - ".secrets.baseline"
+          - "--exclude-lines"
+          - '^\s*"(bits|predictions)": "[A-Za-z0-9+/]*={0,2}",?$'
         exclude: (^ui/package-lock\.json$|^demo/)
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
