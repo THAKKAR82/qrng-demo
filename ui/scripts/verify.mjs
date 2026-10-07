@@ -61,11 +61,17 @@ const fail = (message) => {
 
 if (offline) {
   const html = await readFile(path.resolve(fileArg), 'utf8')
-  const external = [...html.matchAll(/\b(?:src|href)\s*=\s*["']?(?!data:|#)([^"'\s>]+)/gi)].map((m) => m[1])
+  // Only real tags and stylesheets count: the inlined JavaScript mentions src= and
+  // href= in its own code. The network block below is the runtime guard.
+  const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (tag) => tag.slice(0, tag.indexOf('>') + 1))
+  const external = [...markup.matchAll(/<[a-z]+\b[^>]*?\b(?:src|href)\s*=\s*["']?(?!data:|#)([^"'\s>]+)/gi)].map(
+    (m) => m[1],
+  )
   if (external.length > 0) {
     fail(`HTML references external resources: ${external.slice(0, 5).join(', ')}`)
   }
-  const cssUrls = [...html.matchAll(/url\(\s*["']?(?!data:|#)([^"')]+)/gi)].map((m) => m[1])
+  const styles = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n')
+  const cssUrls = [...styles.matchAll(/url\(\s*["']?(?!data:|#)([^"')]+)/gi)].map((m) => m[1])
   if (cssUrls.length > 0) {
     fail(`CSS references external resources: ${cssUrls.slice(0, 5).join(', ')}`)
   }
